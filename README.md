@@ -1,8 +1,9 @@
 # ETF Quant Model
 
-## Project Tracker / To-Do List
+## Workflow Pipeline
 * **Testing:** Update the test scripts to validate the latest model changes (including the regularized Ridge regression and Kalman filter updates).
 * **Universe Expansion:** Research and select a broader, more diverse array of sector-specific ETFs to scale the model population up to 200–400 assets.
+* **Indexing** Introduce tax loss harvesting index mechanism with strict wash sale rules
 
 ---
 

@@ -50,8 +50,27 @@ def main():
     print("\n--- FACTOR BETAS PROJECTION TABLE (TOP 10 ETFs) ---")
     print(top_betas.to_string(index=False))
 
-    # Export to Subabase
-    export_to_supabase(forecast_report, top_picks, top_betas)
+    # Calculate Overall Portfolio Summary Metrics
+    # Portfolio Expected Return = Sum of (Weight * Expected Return)
+    port_exp_return = (top_picks['Target_Weight'] * top_picks['Total_Expected_Return_3M']).sum()
 
-if __name__ == "__main__":
-    main()
+    # Weighted Volatility Approximation
+    port_vol = (top_picks['Target_Weight'] * top_picks['Volatility']).sum()
+
+    # Annualized Sharpe Ratio (assuming 0% risk-free rate baseline for 3-Month horizon)
+    port_sharpe = (port_exp_return / port_vol) if port_vol > 0 else 0.0
+
+    # Print to Console Output
+    print(f"\n--- PORTFOLIO SUMMARY METRICS ---")
+    print(f"  • Total Expected Return (3M) : {port_exp_return:+.2%}")
+    print(f"  • Expected Volatility        : {port_vol:.2%}")
+    print(f"  • Expected Sharpe Ratio     : {port_sharpe:.2f}\n")
+
+    # Export to Supabase with new metrics
+    export_to_supabase(
+        forecast_report=forecast_report,
+        portfolio_df=top_picks,
+        portfolio_return=port_exp_return,
+        portfolio_vol=port_vol,
+        portfolio_sharpe=port_sharpe
+    )

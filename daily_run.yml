@@ -1,10 +1,11 @@
-name: Daily Quant Model & Supabase Sync
+name: Weekly Quant Model & Supabase Sync
 
 on:
   schedule:
-    # Runs at 20:30 UTC (4:30 PM EST) every weekday
-    - cron: '30 20 * * 1-5'
-  workflow_dispatch: # Allows manual trigger from GitHub web interface
+    # Runs at 13:00 UTC (9:00 AM EDT) every Sunday
+    # Minute: 0 | Hour: 13 | Day of Month: * | Month: * | Day of Week: 0 (Sunday)
+    - cron: '0 13 * * 0'
+  workflow_dispatch: # Allows manual triggers anytime from GitHub Actions tab
 
 jobs:
   run-model:

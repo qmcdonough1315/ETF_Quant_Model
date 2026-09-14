@@ -3,6 +3,7 @@ from modules.data_ingestion import fetch_all_data
 from modules.dynamic_beta_estimator import run_kalman_filter_regressions
 from modules.factor_forecaster import generate_factor_forecasts
 from modules.fund_scorer import score_and_rank_funds
+from modules.supabase_exporter import export_to_supabase
 
 def main():
     print(f"Initializing Quantitative Pipeline ({config.FORECAST_HORIZON_MONTHS}-Month Horizon)...")

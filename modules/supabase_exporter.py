@@ -18,7 +18,7 @@ def export_to_supabase(forecast_report, portfolio_df: pd.DataFrame, top_betas: p
     today = datetime.now().strftime('%Y-%m-%d')
     records = []
 
-    # 1. Format Predicted 3-Month Factor Excess Returns (Extract from dictionary)
+    # 1. Format Predicted 3-Month Factor Excess Returns
     predictions = forecast_report.get('predictions', {}) if isinstance(forecast_report, dict) else {}
     for factor, val in predictions.items():
         records.append({
@@ -28,7 +28,7 @@ def export_to_supabase(forecast_report, portfolio_df: pd.DataFrame, top_betas: p
             "value": float(val)
         })
 
-    # 2. Format 10-ETF Factor Portfolio Weights (Uses Target_Weight from main.py)
+    # 2. Format 10-ETF Factor Portfolio Weights
     for _, row in portfolio_df.head(10).iterrows():
         records.append({
             "execution_date": today,
@@ -39,12 +39,11 @@ def export_to_supabase(forecast_report, portfolio_df: pd.DataFrame, top_betas: p
 
     # Push payload to Supabase
     try:
-            response = supabase.table("factor_predictions").insert(records).execute()
-            print(f"DEBUG Response Data: {response.data}")
-            print(f"DEBUG Response Count: {len(response.data) if response.data else 0}")
-            if response.data:
-                print("Successfully exported predictions to Supabase!")
-            else:
-                print("WARNING: Insert call completed, but Supabase returned 0 inserted rows.")
-        except Exception as e:
-            print(f"Failed to export to Supabase: {e}")
+        response = supabase.table("factor_predictions").insert(records).execute()
+        print(f"DEBUG Response Data: {response.data}")
+        if response.data:
+            print("Successfully exported predictions to Supabase!")
+        else:
+            print("WARNING: Insert call completed, but Supabase returned 0 inserted rows.")
+    except Exception as e:
+        print(f"Failed to export to Supabase: {e}")

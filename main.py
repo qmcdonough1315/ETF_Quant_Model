@@ -51,3 +51,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+from modules.supabase_exporter import export_to_supabase
+
+# ... [after portfolio_df and factor_returns_df are calculated] ...
+export_to_supabase(factor_returns_df, top_10_portfolio_df)

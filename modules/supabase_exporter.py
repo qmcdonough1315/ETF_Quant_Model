@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 from supabase import create_client, Client
 
-def export_to_supabase(factor_returns_df: pd.DataFrame, portfolio_df: pd.DataFrame):
+def export_to_supabase(forecast_report, portfolio_df: pd.DataFrame, top_betas: pd.DataFrame = None):
     """
     Exports 3-Month Factor Excess Returns and 10-ETF Portfolio Weights to Supabase.
     """
@@ -18,24 +18,23 @@ def export_to_supabase(factor_returns_df: pd.DataFrame, portfolio_df: pd.DataFra
     today = datetime.now().strftime('%Y-%m-%d')
     records = []
 
-    # 1. Format Predicted 3-Month Factor Excess Returns
-    # Expects factor_returns_df to have factors as index/column and predicted return as value
-    for factor, row in factor_returns_df.iterrows():
+    # 1. Format Predicted 3-Month Factor Excess Returns (Extract from dictionary)
+    predictions = forecast_report.get('predictions', {}) if isinstance(forecast_report, dict) else {}
+    for factor, val in predictions.items():
         records.append({
             "execution_date": today,
             "data_type": "factor_returns",
             "ticker_or_factor": str(factor),
-            "value": float(row['predicted_excess_return'])
+            "value": float(val)
         })
 
-    # 2. Format 10-ETF Factor Portfolio Weights
-    # Expects portfolio_df to have Ticker as index and Weight as value
-    for ticker, row in portfolio_df.head(10).iterrows():
+    # 2. Format 10-ETF Factor Portfolio Weights (Uses Target_Weight from main.py)
+    for _, row in portfolio_df.head(10).iterrows():
         records.append({
             "execution_date": today,
             "data_type": "portfolio_weights",
-            "ticker_or_factor": str(ticker),
-            "value": float(row['Weight'])
+            "ticker_or_factor": str(row['Ticker']),
+            "value": float(row['Target_Weight'])
         })
 
     # Push payload to Supabase

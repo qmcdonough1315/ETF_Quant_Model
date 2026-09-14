@@ -49,10 +49,8 @@ def main():
     print("\n--- FACTOR BETAS PROJECTION TABLE (TOP 10 ETFs) ---")
     print(top_betas.to_string(index=False))
 
+    # Export to Subabase
+    export_to_supabase(forecast_report, top_picks, top_betas)
+
 if __name__ == "__main__":
     main()
-
-from modules.supabase_exporter import export_to_supabase
-
-# ... [after portfolio_df and factor_returns_df are calculated] ...
-export_to_supabase(factor_returns_df, top_10_portfolio_df)

@@ -26,8 +26,6 @@ def main():
         print(f"  • {factor:8s}: {ret * 100:+.2f}%")
         
     # --- TAX-LOSS HARVESTING FRAMEWORK ---
-    # In a full backtest, this list will dynamically update with tickers sold at a loss 
-    # within the last 30 days to strictly enforce wash-sale compliance.
     recent_wash_sales = [] 
     
     # 4. Score Funds with 3-Month Horizon, Volatility Sizing, and Wash-Sale filtering
@@ -51,20 +49,15 @@ def main():
     print(top_betas.to_string(index=False))
 
     # Calculate Overall Portfolio Summary Metrics
-    # Portfolio Expected Return = Sum of (Weight * Expected Return)
     port_exp_return = (top_picks['Target_Weight'] * top_picks['Total_Expected_Return_3M']).sum()
-
-    # Weighted Volatility Approximation
     port_vol = (top_picks['Target_Weight'] * top_picks['Volatility']).sum()
-
-    # Annualized Sharpe Ratio (assuming 0% risk-free rate baseline for 3-Month horizon)
     port_sharpe = (port_exp_return / port_vol) if port_vol > 0 else 0.0
 
     # Print to Console Output
     print(f"\n--- PORTFOLIO SUMMARY METRICS ---")
     print(f"  • Total Expected Return (3M) : {port_exp_return:+.2%}")
     print(f"  • Expected Volatility        : {port_vol:.2%}")
-    print(f"  • Expected Sharpe Ratio     : {port_sharpe:.2f}\n")
+    print(f"  • Expected Sharpe Ratio      : {port_sharpe:.2f}\n")
 
     # Export to Supabase with new metrics
     export_to_supabase(
@@ -74,3 +67,6 @@ def main():
         portfolio_vol=port_vol,
         portfolio_sharpe=port_sharpe
     )
+
+if __name__ == "__main__":
+    main()

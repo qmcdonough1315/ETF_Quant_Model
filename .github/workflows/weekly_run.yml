@@ -3,7 +3,6 @@ name: Weekly Quant Model & Supabase Sync
 on:
   schedule:
     # Runs at 13:00 UTC (9:00 AM EDT) every Sunday
-    # Minute: 0 | Hour: 13 | Day of Month: * | Month: * | Day of Week: 0 (Sunday)
     - cron: '0 13 * * 0'
   workflow_dispatch: # Allows manual triggers anytime from GitHub Actions tab
 
@@ -13,10 +12,10 @@ jobs:
 
     steps:
     - name: Check out repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 

@@ -39,6 +39,10 @@ def export_to_supabase(forecast_report, portfolio_df: pd.DataFrame, top_betas: p
 
     # Push payload to Supabase
     try:
+        # Insert this right before: response = supabase.table("factor_predictions").insert(records).execute()
+        print(f"DEBUG: Payload contains {len(records)} records.")
+        print(f"DEBUG: Sample record: {records[0] if records else 'EMPTY'}")
+
         response = supabase.table("factor_predictions").insert(records).execute()
         print("Successfully exported predictions to Supabase!")
     except Exception as e:

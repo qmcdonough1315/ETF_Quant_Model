@@ -18,6 +18,7 @@ def score_and_rank_funds(
     # Apply configured tilts (e.g., Overweight Momentum & Profitability)
     tilted_preds = [factor_preds[f] * config.FACTOR_TILTS[f] for f in config.TARGET_FACTORS]
     predicted_vector = np.array(tilted_preds)
+    horizon = config.FORECAST_HORIZON_MONTHS
     
     scoring_data = []
     
@@ -39,13 +40,13 @@ def score_and_rank_funds(
         
         expected_factor_return = np.dot(beta_vector, predicted_vector)
         
-        # Scale monthly alpha to a 3-month horizon
-        alpha_3m = ((1 + recent_states['alpha']) ** 3) - 1
+        # Kalman alpha is a monthly intercept; compound to the forecast horizon
+        alpha_horizon = ((1 + recent_states['alpha']) ** horizon) - 1
         
         scoring_data.append({
             'Ticker': ticker,
             'Expected_Factor_Return_3M': expected_factor_return,
-            'Raw_Alpha_3M': alpha_3m,
+            'Raw_Alpha_3M': alpha_horizon,
             'Beta_Mkt': recent_states['beta_mkt'],
             'Beta_SMB': recent_states['beta_smb'],
             'Beta_HML': recent_states['beta_hml'],
@@ -70,9 +71,11 @@ def score_and_rank_funds(
     # --- VOLATILITY-ADJUSTED SIZING ---
     vols = []
     for ticker in top_picks['Ticker']:
-        # Trailing 12-month standard deviation for volatility calculation
-        vol = prices[ticker].tail(12).std()
-        vols.append(vol)
+        # `prices` is monthly returns (see data_ingestion). Scale monthly std
+        # to the forecast horizon under an i.i.d. assumption: σ * sqrt(H).
+        vol_monthly = prices[ticker].tail(12).std()
+        vol_horizon = vol_monthly * np.sqrt(config.FORECAST_HORIZON_MONTHS)
+        vols.append(vol_horizon)
         
     top_picks['Volatility'] = vols
     top_picks['Inv_Vol'] = 1.0 / top_picks['Volatility']

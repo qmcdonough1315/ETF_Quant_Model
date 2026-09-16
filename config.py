@@ -67,7 +67,7 @@ ETF_POPULATION = [
 # Model Parameters
 MIN_FACTOR_THRESHOLD = 0.01  
 ALPHA_SHRINKAGE_WEIGHT = 0.75 # 75% weight to fund's alpha, 25% to the group mean
-FORECAST_HORIZON_MONTHS = 3  # Updated from 2 to 6 months
+FORECAST_HORIZON_MONTHS = 3  # Holding / forecast horizon in months
 
 # Overweighting Momentum (WML) and Profitability (RMW) by 50%
 FACTOR_TILTS = {

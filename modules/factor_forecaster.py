@@ -8,10 +8,12 @@ def create_factor_features_and_targets(
     factor_df: pd.DataFrame,
     macro_df: pd.DataFrame,
     lookback_lags: int = 3,
-    # Set default horizon to 6
-    horizon: int = 6 
+    horizon: int = None,
 ):
     
+    if horizon is None:
+        horizon = config.FORECAST_HORIZON_MONTHS
+
     df_factors = factor_df[config.TARGET_FACTORS].copy()
     
     # 1. Factor Lag Features
@@ -32,14 +34,14 @@ def create_factor_features_and_targets(
     macro_lagged = macro_features.shift(1)
     X_full = X_factors.join(macro_lagged, how='inner')
     
-    # 3. Target Vectors: 6-Month Forward Cumulative Returns
+    # 3. Target Vectors: horizon-month forward cumulative factor returns
     Y_dict = {}
     for col in config.TARGET_FACTORS:
-        # Compound monthly factor returns over 6 months: (1 + r_t+1) * ... * (1 + r_t+6) - 1
+        # Compound monthly factor returns over the forecast horizon
         comp_return = pd.Series(1.0, index=df_factors.index)
         for h in range(1, horizon + 1):
             comp_return *= (1 + df_factors[col].shift(-h))
-        Y_dict[f"fwd6m_{col}"] = comp_return - 1  # Fixed: y_dict -> Y_dict
+        Y_dict[f"fwd{horizon}m_{col}"] = comp_return - 1
 
     Y = pd.DataFrame(Y_dict, index=df_factors.index)  # Fixed: DataFram -> DataFrame
     
@@ -47,7 +49,9 @@ def create_factor_features_and_targets(
     return dataset[X_full.columns], dataset[Y.columns]
 
 def generate_factor_forecasts(factor_df: pd.DataFrame, macro_df: pd.DataFrame, threshold: float = 0.01):
-    X, Y = create_factor_features_and_targets(factor_df, macro_df)
+    X, Y = create_factor_features_and_targets(
+        factor_df, macro_df, horizon=config.FORECAST_HORIZON_MONTHS
+    )
     
     base_gbm = lgb.LGBMRegressor(n_estimators=200, max_depth=5, learning_rate=0.02, random_state=42, verbosity=-1)
     model = MultiOutputRegressor(base_gbm).fit(X, Y)

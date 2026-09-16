@@ -69,15 +69,23 @@ MIN_FACTOR_THRESHOLD = 0.01
 ALPHA_SHRINKAGE_WEIGHT = 0.75 # 75% weight to fund's alpha, 25% to the group mean
 FORECAST_HORIZON_MONTHS = 3  # Holding / forecast horizon in months
 
-# Overweighting Momentum (WML) and Profitability (RMW) by 50%
+# Overweight high-return value/investment factors; keep a milder momentum tilt
 FACTOR_TILTS = {
     'Mkt_RF': 1.0, 
     'SMB': 1.0, 
-    'HML': 1.0, 
-    'RMW': 1.5, 
-    'CMA': 1.0, 
-    'WML': 1.5
+    'HML': 1.5, 
+    'RMW': 1.0, 
+    'CMA': 1.5, 
+    'WML': 1.25
 }
+
+# Portfolio construction (MVO)
+MAX_ASSET_WEIGHT = 0.12
+HIGH_VOL_THRESHOLD_3M = 0.20
+HIGH_VOL_SHARPE_EXCEPTION = 0.35
+MVO_COV_LOOKBACK_MONTHS = 36
+MVO_CANDIDATE_POOL = 40
+HML_CMA_TILT_INTENSITY = 1.0
 
 # Macroeconomic Series (FRED Tickers)
 MACRO_FRED_SERIES = {

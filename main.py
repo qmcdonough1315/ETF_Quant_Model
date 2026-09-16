@@ -3,6 +3,7 @@ from modules.data_ingestion import fetch_all_data
 from modules.dynamic_beta_estimator import run_kalman_filter_regressions
 from modules.factor_forecaster import generate_factor_forecasts
 from modules.fund_scorer import score_and_rank_funds
+from modules.portfolio_optimizer import portfolio_expected_metrics
 from modules.supabase_exporter import export_to_supabase
 
 def main():
@@ -28,7 +29,7 @@ def main():
     # --- TAX-LOSS HARVESTING FRAMEWORK ---
     recent_wash_sales = [] 
     
-    # 4. Score Funds with 3-Month Horizon, Volatility Sizing, and Wash-Sale filtering
+    # 4. Score Funds and size via long-only max-Sharpe MVO (12% cap, RMW/vol screens)
     top_picks, top_betas = score_and_rank_funds(
         beta_profiles=beta_profiles, 
         forecast_report=forecast_report, 
@@ -48,10 +49,7 @@ def main():
     print("\n--- FACTOR BETAS PROJECTION TABLE (TOP 10 ETFs) ---")
     print(top_betas.to_string(index=False))
 
-    # Calculate Overall Portfolio Summary Metrics
-    port_exp_return = (top_picks['Target_Weight'] * top_picks['Total_Expected_Return_3M']).sum()
-    port_vol = (top_picks['Target_Weight'] * top_picks['Volatility']).sum()
-    port_sharpe = (port_exp_return / port_vol) if port_vol > 0 else 0.0
+    port_exp_return, port_vol, port_sharpe = portfolio_expected_metrics(top_picks, prices)
 
     # Print to Console Output
     print(f"\n--- PORTFOLIO SUMMARY METRICS ---")

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import config
+from modules.portfolio_optimizer import attach_horizon_volatility, construct_portfolio
 
 def score_and_rank_funds(
     beta_profiles: dict, 
@@ -15,7 +16,7 @@ def score_and_rank_funds(
         
     factor_preds = forecast_report['predictions']
     
-    # Apply configured tilts (e.g., Overweight Momentum & Profitability)
+    # Apply configured tilts (e.g., overweight HML & CMA)
     tilted_preds = [factor_preds[f] * config.FACTOR_TILTS[f] for f in config.TARGET_FACTORS]
     predicted_vector = np.array(tilted_preds)
     horizon = config.FORECAST_HORIZON_MONTHS
@@ -64,26 +65,20 @@ def score_and_rank_funds(
     w = config.ALPHA_SHRINKAGE_WEIGHT
     scores_df['Shrunk_Alpha_3M'] = (w * scores_df['Raw_Alpha_3M']) + ((1 - w) * mean_alpha)
     scores_df['Total_Expected_Return_3M'] = scores_df['Expected_Factor_Return_3M'] + scores_df['Shrunk_Alpha_3M']
+
+    scores_df = attach_horizon_volatility(scores_df, prices)
+    if scores_df.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    top_picks = construct_portfolio(
+        scores_df=scores_df,
+        prices=prices,
+        factor_preds=factor_preds,
+        top_n=top_n,
+    )
+    if top_picks.empty:
+        return pd.DataFrame(), pd.DataFrame()
     
-    # Rank and slice top picks
-    top_picks = scores_df.sort_values(by='Total_Expected_Return_3M', ascending=False).head(top_n).copy()
-    
-    # --- VOLATILITY-ADJUSTED SIZING ---
-    vols = []
-    for ticker in top_picks['Ticker']:
-        # `prices` is monthly returns (see data_ingestion). Scale monthly std
-        # to the forecast horizon under an i.i.d. assumption: σ * sqrt(H).
-        vol_monthly = prices[ticker].tail(12).std()
-        vol_horizon = vol_monthly * np.sqrt(config.FORECAST_HORIZON_MONTHS)
-        vols.append(vol_horizon)
-        
-    top_picks['Volatility'] = vols
-    top_picks['Inv_Vol'] = 1.0 / top_picks['Volatility']
-    
-    # Normalize weights to sum to 100%
-    top_picks['Target_Weight'] = top_picks['Inv_Vol'] / top_picks['Inv_Vol'].sum()
-    
-    # Separate Beta Output
     beta_cols = ['Ticker', 'Beta_Mkt', 'Beta_SMB', 'Beta_HML', 'Beta_RMW', 'Beta_CMA', 'Beta_WML']
     top_betas_df = top_picks[beta_cols].copy()
     

@@ -59,7 +59,7 @@ def run_walkforward_backtest(
     rebalance_dates = all_dates[(all_dates >= start_date) & (all_dates <= end_date)]
 
     if len(rebalance_dates) < rebalance_step_months + 1:
-        print("⚠️ Not enough date points to execute 6-month backtest steps.")
+        print("Not enough date points to execute 3-month backtest steps.")
         return
 
     strategy_value = initial_capital
@@ -81,7 +81,9 @@ def run_walkforward_backtest(
         try:
             beta_profiles = run_kalman_filter_regressions(hist_returns, hist_factors)
             forecast_report = generate_factor_forecasts(hist_factors, hist_macro, threshold=config.MIN_FACTOR_THRESHOLD)
-            top_picks_df, top_betas_df = score_and_rank_funds(beta_profiles, forecast_report, top_n=top_n)
+            top_picks_df, top_betas_df = score_and_rank_funds(
+                beta_profiles, forecast_report, prices=hist_returns, top_n=top_n
+            )
             selected_tickers = top_picks_df['Ticker'].head(top_n).tolist()
         except Exception as e:
             print(f"⚠️ Error on {current_date.strftime('%Y-%m-%d')}: {e}")
@@ -136,7 +138,7 @@ def run_walkforward_backtest(
 
     # Print Summary Performance Table
     print("\n" + "=" * 80)
-    print("📊 RISK-ADJUSTED PERFORMANCE COMPARISON")
+    print("RISK-ADJUSTED PERFORMANCE COMPARISON")
     print("=" * 80)
     
     metrics_summary = pd.DataFrame({

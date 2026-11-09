@@ -35,26 +35,32 @@ def export_to_supabase(
             "value": float(val)
         })
 
-    # 2. Format 10-ETF Portfolio Weights & Individual Fund Expected Returns
-    for _, row in portfolio_df.head(10).iterrows():
-        ticker = str(row['Ticker'])
-        
+    # 2. Format portfolio weights & individual fund expected returns
+    #    (variable holdings count; zeros are not exported)
+    holdings = portfolio_df.loc[portfolio_df["Target_Weight"] > 0].copy()
+    for _, row in holdings.iterrows():
+        ticker = str(row["Ticker"])
+
         # Target Weight
-        records.append({
-            "execution_date": today,
-            "data_type": "portfolio_weights",
-            "ticker_or_factor": ticker,
-            "value": float(row['Target_Weight'])
-        })
-        
-        # Fund Expected Return
-        if 'Total_Expected_Return_3M' in row:
-            records.append({
+        records.append(
+            {
                 "execution_date": today,
-                "data_type": "fund_expected_return",
+                "data_type": "portfolio_weights",
                 "ticker_or_factor": ticker,
-                "value": float(row['Total_Expected_Return_3M'])
-            })
+                "value": float(row["Target_Weight"]),
+            }
+        )
+
+        # Fund Expected Return
+        if "Total_Expected_Return_3M" in row:
+            records.append(
+                {
+                    "execution_date": today,
+                    "data_type": "fund_expected_return",
+                    "ticker_or_factor": ticker,
+                    "value": float(row["Total_Expected_Return_3M"]),
+                }
+            )
 
     # 3. Format Portfolio Level Summary Metrics
     if portfolio_return is not None:

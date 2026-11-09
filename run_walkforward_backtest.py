@@ -31,10 +31,12 @@ def run_walkforward_backtest(
     start_date: str = '2018-12-31', 
     end_date: str = '2026-06-30', 
     initial_capital: float = 10000.0,
-    top_n: int = 10,
+    max_holdings: int = None,
     rebalance_step_months: int = 3,
     risk_free_rate: float = 0.03
 ):
+    if max_holdings is None:
+        max_holdings = config.MAX_HOLDINGS
     print("=" * 70)
     print(f"🚀 INITIALIZING 3-MONTH WALK-FORWARD BACKTEST ({start_date} to {end_date})")
     print(f"💰 Starting Portfolio Capital: ${initial_capital:,.2f}")
@@ -82,9 +84,12 @@ def run_walkforward_backtest(
             beta_profiles = run_kalman_filter_regressions(hist_returns, hist_factors)
             forecast_report = generate_factor_forecasts(hist_factors, hist_macro, threshold=config.MIN_FACTOR_THRESHOLD)
             top_picks_df, top_betas_df = score_and_rank_funds(
-                beta_profiles, forecast_report, prices=hist_returns, top_n=top_n
+                beta_profiles,
+                forecast_report,
+                prices=hist_returns,
+                max_holdings=max_holdings,
             )
-            selected_tickers = top_picks_df['Ticker'].head(top_n).tolist()
+            selected_tickers = top_picks_df["Ticker"].tolist()
         except Exception as e:
             print(f"⚠️ Error on {current_date.strftime('%Y-%m-%d')}: {e}")
             selected_tickers = []

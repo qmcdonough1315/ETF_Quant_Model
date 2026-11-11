@@ -2,7 +2,8 @@
 
 ## Workflow Pipeline
 * **Universe:** 286 ETFs in 21 sleeves (`ETF_CATEGORIES` in `config.py`). Construction is long-only max-Sharpe with a 12% single-name cap, a 30% category cap, and an endogenous holdings count (names at or above a 1% weight, at most 15).
-* **Paper ledger and TLH:** Each model run dollar-cost averages $1,000 into the target weights and $1,000 into VOO. Factor lots follow a 91-day minimum hold, a 30-day wash-sale window (including substantially identical peers), and beta-distance substitutes inside the same sleeve. See `PAPER_PORTFOLIO.md`.
+* **Paper ledger and TLH:** Each model run dollar-cost averages **~$3,846** (`$50k ÷ 13`) into the target weights and the same into VOO, laddering the $50k ETF sleeve over the 3-month min hold. Factor lots use a 91-day minimum hold, HIFO / least-gain lot selection on sells, a 30-day wash-sale window (including substantially identical peers), and beta-distance substitutes inside the same sleeve. See `PAPER_PORTFOLIO.md`.
+* **Options / vol sleeve:** Separate $25k defined-risk paper book (+ $25k cash margin reserve) maps factor composite × IV Rank to credit spreads. See `OPTIONS_SLEEVE.md`.
 
 ---
 

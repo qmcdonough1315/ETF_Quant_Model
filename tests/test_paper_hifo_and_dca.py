@@ -9,6 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import config
+from datetime import datetime, timezone
+
+from modules.options_orders import (
+    OptionContractQuote,
+    build_mleg_payload,
+    credit_limit_price,
+    propose_defined_risk_trade,
+)
 from modules.options_sleeve import build_signal, classify_regime, size_spread_contracts
 
 
@@ -79,9 +87,45 @@ def test_options_regime_map():
     assert size_spread_contracts(1.0, 5.0, 2000) == 5
 
 
+def _spy_chain() -> list[OptionContractQuote]:
+    return [
+        OptionContractQuote("SPY260417P00485000", "SPY", "2026-04-17", 485, "put", mid=3.2, delta=-0.25),
+        OptionContractQuote("SPY260417P00480000", "SPY", "2026-04-17", 480, "put", mid=2.1, delta=-0.12),
+        OptionContractQuote("SPY260417P00475000", "SPY", "2026-04-17", 475, "put", mid=1.4, delta=-0.08),
+        OptionContractQuote("SPY260417C00520000", "SPY", "2026-04-17", 520, "call", mid=2.8, delta=0.25),
+        OptionContractQuote("SPY260417C00525000", "SPY", "2026-04-17", 525, "call", mid=1.7, delta=0.15),
+        OptionContractQuote("SPY260417C00530000", "SPY", "2026-04-17", 530, "call", mid=1.0, delta=0.10),
+    ]
+
+
+def test_options_order_builder():
+    assert credit_limit_price(1.25) == -1.15
+    as_of = datetime(2026, 3, 11, tzinfo=timezone.utc)
+    bull = propose_defined_risk_trade(
+        "SPY", 0.9, 55, 500.0, _spy_chain(), as_of=as_of, capital_budget_usd=2000
+    )
+    assert getattr(bull, "structure", None) == "bull_put_spread"
+    assert bull.legs[0].side == "sell" and bull.legs[0].strike == 485
+    assert bull.limit_price < 0
+    payload = build_mleg_payload(bull)
+    assert payload["order_class"] == "mleg"
+    assert float(payload["limit_price"]) < 0
+
+    skip = propose_defined_risk_trade(
+        "QQQ",
+        0.7,
+        22,
+        500.0,
+        [OptionContractQuote(c.symbol.replace("SPY", "QQQ"), "QQQ", c.expiration_date, c.strike_price, c.type, mid=c.mid, delta=c.delta) for c in _spy_chain()],
+        as_of=as_of,
+    )
+    assert skip.structure == "skip_low_iv"
+
+
 if __name__ == "__main__":
     test_weekly_contribution_is_fifty_k_over_thirteen()
     test_hifo_sells_high_basis_before_low_basis_winner()
     test_deepest_loss_sorts_first()
     test_options_regime_map()
+    test_options_order_builder()
     print("ok")

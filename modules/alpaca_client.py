@@ -96,6 +96,56 @@ def get_option_contracts(underlying_symbols: list[str], limit: int = 100) -> lis
     return []
 
 
+def alpaca_post(path: str, body: dict[str, Any]) -> dict[str, Any] | list[Any]:
+    key_id, secret, base = _credentials()
+    if not key_id or not secret:
+        raise RuntimeError(
+            "Alpaca credentials missing. Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY."
+        )
+    if "paper-api.alpaca.markets" not in base.lower():
+        raise RuntimeError("Refusing order: ALPACA_API_BASE_URL is not paper-api.alpaca.markets.")
+    url = f"{base}/v2{path if path.startswith('/') else '/' + path}"
+    payload = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "APCA-API-KEY-ID": key_id,
+            "APCA-API-SECRET-KEY": secret,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body_txt = exc.read().decode("utf-8", errors="replace")[:400]
+        raise RuntimeError(f"Alpaca HTTP {exc.code}: {body_txt}") from exc
+
+
+def place_mleg_order(payload: dict[str, Any], *, confirm: bool = False) -> dict[str, Any]:
+    """
+    Submit a multi-leg options order to Alpaca paper.
+    Credit spreads must use a negative limit_price.
+    """
+    if not confirm:
+        raise RuntimeError("Set confirm=True to submit a paper mleg order.")
+    if payload.get("order_class") != "mleg":
+        raise RuntimeError("order_class must be mleg.")
+    try:
+        limit = float(payload.get("limit_price"))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("limit_price required") from exc
+    if limit >= 0:
+        raise RuntimeError("Credit spreads require a negative limit_price (Alpaca convention).")
+    data = alpaca_post("/orders", payload)
+    if not isinstance(data, dict):
+        raise RuntimeError("Unexpected Alpaca order payload")
+    return data
+
+
 def paper_ledger_summary() -> dict[str, Any]:
     """Compact snapshot for logging / export."""
     if not configured():

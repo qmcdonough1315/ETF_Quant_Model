@@ -20,7 +20,7 @@ def run_historical_backtest(
     df_factors: pd.DataFrame,
     df_macro: pd.DataFrame,
     initial_capital: float = 10000.0,
-    top_n: int = 10,
+    max_holdings: int = None,
     rebalance_step_months: int = None,
 ):
     """
@@ -28,6 +28,8 @@ def run_historical_backtest(
     """
     if rebalance_step_months is None:
         rebalance_step_months = config.FORECAST_HORIZON_MONTHS
+    if max_holdings is None:
+        max_holdings = config.MAX_HOLDINGS
 
     horizon_label = f"{rebalance_step_months}M"
 
@@ -61,7 +63,7 @@ def run_historical_backtest(
             beta_profiles,
             forecast_report,
             prices=hist_etfs,
-            top_n=top_n,
+            max_holdings=max_holdings,
         )
 
         if top_picks_df.empty:

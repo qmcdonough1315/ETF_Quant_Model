@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -129,6 +129,9 @@ def _price_on_or_before(opens: pd.DataFrame, ticker: str, dt: pd.Timestamp) -> O
     return px if np.isfinite(px) and px > 0 else None
 
 
+BETA_COLUMNS = ("beta_mkt", "beta_smb", "beta_hml", "beta_rmw", "beta_cma", "beta_wml")
+
+
 def _category_peers(ticker: str) -> List[str]:
     mapping = getattr(config, "ETF_CATEGORIES", {})
     for peers in mapping.values():
@@ -137,28 +140,87 @@ def _category_peers(ticker: str) -> List[str]:
     return []
 
 
+def _beta_vector_from_frame(df: pd.DataFrame) -> Optional[np.ndarray]:
+    """Latest Kalman state, matching the fund scorer's 3-row EWM."""
+    if df is None or len(df) < 3:
+        return None
+    missing = [col for col in BETA_COLUMNS if col not in df.columns]
+    if missing:
+        return None
+    recent = df.tail(3).ewm(span=2).mean().iloc[-1]
+    vec = np.array([float(recent[col]) for col in BETA_COLUMNS], dtype=float)
+    if not np.isfinite(vec).all():
+        return None
+    return vec
+
+
+def betas_from_profiles(beta_profiles: Optional[dict]) -> Dict[str, np.ndarray]:
+    """Map ticker -> 6-factor beta vector from Kalman profile frames."""
+    out: Dict[str, np.ndarray] = {}
+    if not beta_profiles:
+        return out
+    for ticker, frame in beta_profiles.items():
+        if not isinstance(frame, pd.DataFrame):
+            continue
+        vec = _beta_vector_from_frame(frame)
+        if vec is not None:
+            out[str(ticker).upper()] = vec
+    return out
+
+
+def _rank_by_beta_distance(
+    sold: str,
+    peers: List[str],
+    betas: Optional[Dict[str, np.ndarray]],
+) -> List[str]:
+    """
+    Prefer the category peer whose factor betas are closest to the sold name.
+    Peers without a beta vector keep their category-list order after the ranked names.
+    """
+    if not betas:
+        return list(peers)
+    origin = betas.get(sold.upper())
+    if origin is None:
+        return list(peers)
+    ranked: List[Tuple[float, str]] = []
+    unranked: List[str] = []
+    for peer in peers:
+        vec = betas.get(peer.upper())
+        if vec is None:
+            unranked.append(peer)
+            continue
+        ranked.append((float(np.linalg.norm(vec - origin)), peer))
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [peer for _, peer in ranked] + unranked
+
+
 def _choose_substitute(
     sold: str,
     as_of: pd.Timestamp,
     ledger: Ledger,
     opens: pd.DataFrame,
     weights: Dict[str, float],
+    betas: Optional[Dict[str, np.ndarray]] = None,
 ) -> Optional[str]:
     banned = _identical_set(sold)
-    for peer in _category_peers(sold):
+    peers = _rank_by_beta_distance(sold, _category_peers(sold), betas)
+
+    def eligible(peer: str, respect_weight_cap: bool) -> bool:
         if peer in banned:
-            continue
+            return False
         if _is_wash_restricted(ledger, peer, as_of):
-            continue
+            return False
         if _price_on_or_before(opens, peer, as_of) is None:
-            continue
-        if weights.get(peer, 0.0) > 0.11:
-            continue
-        return peer
-    for peer in _category_peers(sold):
-        if peer in banned or _is_wash_restricted(ledger, peer, as_of):
-            continue
-        if _price_on_or_before(opens, peer, as_of) is not None:
+            return False
+        if respect_weight_cap and weights.get(peer, 0.0) > 0.11:
+            return False
+        return True
+
+    for peer in peers:
+        if eligible(peer, respect_weight_cap=True):
+            return peer
+    for peer in peers:
+        if eligible(peer, respect_weight_cap=False):
             return peer
     return None
 
@@ -247,6 +309,7 @@ def _evaluate_exits(
     as_of: pd.Timestamp,
     weights: Dict[str, float],
     opens: pd.DataFrame,
+    betas: Optional[Dict[str, np.ndarray]] = None,
 ) -> None:
     open_factor = [l for l in ledger.lots if l.status == "open" and l.strategy == "factor"]
     for lot in open_factor:
@@ -264,7 +327,7 @@ def _evaluate_exits(
                 _record_sale(ledger, lot, as_of, px, "tlh_exit_no_allocation")
                 continue
             proceeds = _record_sale(ledger, lot, as_of, px, "tlh_rotate")
-            sub = _choose_substitute(lot.ticker, as_of, ledger, opens, weights)
+            sub = _choose_substitute(lot.ticker, as_of, ledger, opens, weights, betas)
             if sub:
                 sub_px = _price_on_or_before(opens, sub, as_of)
                 if sub_px is not None:
@@ -374,6 +437,7 @@ def process_week(
     run_date: str,
     target_weights: Dict[str, float],
     ledger: Optional[Ledger] = None,
+    betas: Optional[Dict[str, np.ndarray]] = None,
 ) -> Tuple[Ledger, dict]:
     """Advance the ledger through one model run / fill cycle."""
     ledger = ledger or Ledger()
@@ -385,12 +449,19 @@ def process_week(
         if (fill_ts - pd.Timestamp(sold_on).normalize()).days >= WASH_SALE_DAYS:
             del ledger.wash[t]
 
-    tickers = sorted(set(target_weights) | {l.ticker for l in ledger.lots if l.status == "open"} | {"VOO"})
-    for t in list(target_weights):
-        tickers.extend(_category_peers(t)[:8])
-    tickers = sorted(set(tickers))
+    # Price the book, open lots, and the closest same-sleeve peers. Ranking
+    # before the download keeps a near-beta substitute from being skipped just
+    # because it sits late in the category list.
+    needed = {str(k).upper() for k in target_weights}
+    needed |= {lot.ticker.upper() for lot in ledger.lots if lot.status == "open"}
+    needed.add("VOO")
+    for lot in ledger.lots:
+        if lot.status != "open" or lot.strategy != "factor":
+            continue
+        ranked = _rank_by_beta_distance(lot.ticker, _category_peers(lot.ticker), betas)
+        needed.update(peer.upper() for peer in ranked[:8])
+    tickers = sorted(needed)
 
-    start = (fill_ts - pd.Timedelta(days=10)).strftime("%Y-%m-%d")
     end = fill_ts.strftime("%Y-%m-%d")
     # Also need history for MTM of older lots — pull a wider window when summarizing later.
     opens = _fetch_daily_opens(tickers, start=(run_ts - pd.Timedelta(days=420)).strftime("%Y-%m-%d"), end=end)
@@ -400,7 +471,7 @@ def process_week(
     if total > 0:
         weights = {k: v / total for k, v in weights.items()}
 
-    _evaluate_exits(ledger, fill_ts, weights, opens)
+    _evaluate_exits(ledger, fill_ts, weights, opens, betas)
     _deploy(ledger, run_ts, fill_ts, weights, opens)
     summary = _summary(ledger, fill_ts, opens, run_count=1)  # caller aggregates run_count
     return ledger, summary
@@ -436,7 +507,12 @@ def export_paper_summary_to_supabase(as_of: str, summary: dict) -> None:
         print(f"paper_portfolio export failed (create table via supabase_paper_portfolio.sql?): {exc}")
 
 
-def run_paper_portfolio_step(portfolio_df: pd.DataFrame, run_date: Optional[str] = None) -> dict:
+def run_paper_portfolio_step(
+    portfolio_df: pd.DataFrame,
+    run_date: Optional[str] = None,
+    beta_profiles: Optional[dict] = None,
+    ledger: Optional[Ledger] = None,
+) -> dict:
     """Convenience entrypoint for main.py."""
     run_date = run_date or datetime.now().strftime("%Y-%m-%d")
     if portfolio_df is None or portfolio_df.empty:
@@ -446,7 +522,8 @@ def run_paper_portfolio_step(portfolio_df: pd.DataFrame, run_date: Optional[str]
         for _, r in portfolio_df.iterrows()
         if float(r["Target_Weight"]) > WEIGHT_EPS
     }
-    ledger, summary = process_week(run_date, weights, Ledger())
+    betas = betas_from_profiles(beta_profiles)
+    ledger, summary = process_week(run_date, weights, ledger or Ledger(), betas=betas)
     # Note: full multi-week continuity requires loading prior lots from Supabase.
     # The dashboard currently replays full history from factor_predictions.
     summary["open_factor_lots"] = sum(1 for l in ledger.lots if l.status == "open" and l.strategy == "factor")

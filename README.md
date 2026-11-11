@@ -1,8 +1,8 @@
 # ETF Quant Model
 
 ## Workflow Pipeline
-* **Universe Expansion:** Research and select a broader, more diverse array of sector-specific ETFs to scale the model population up to 200–400 assets.
-* **Indexing:** Introduce tax loss harvesting index mechanism with strict wash sale rules
+* **Universe:** 286 ETFs in 21 sleeves (`ETF_CATEGORIES` in `config.py`). Construction is long-only max-Sharpe with a 12% single-name cap, a 30% category cap, and an endogenous holdings count (names at or above a 1% weight, at most 15).
+* **Paper ledger and TLH:** Each model run dollar-cost averages $1,000 into the target weights and $1,000 into VOO. Factor lots follow a 91-day minimum hold, a 30-day wash-sale window (including substantially identical peers), and beta-distance substitutes inside the same sleeve. See `PAPER_PORTFOLIO.md`.
 
 ---
 
@@ -27,6 +27,8 @@ This quantitative model projects 3-month forward excess returns for a universe o
 * **`modules/factor_model.py`**  
   * *What it does:* Manages multi-factor calculations, compounding daily factor premiums into 3-month rolling horizons to match your specific holding period without violating temporal independence assumptions.
 * **`modules/portfolio_optimizer.py`**  
-  * *What it does:* Applies constraints to translate raw model predictions into a tradeable portfolio. It enforces a strict long-only indexing framework, filtering out negative alpha predictions and sizing asset weights proportionally.
+  * *What it does:* Applies constraints to translate raw model predictions into a tradeable portfolio. It enforces a strict long-only indexing framework, screens RMW drag and high volatility, and sizes weights with max-Sharpe subject to single-name and category caps.
+* **`modules/paper_portfolio.py`**  
+  * *What it does:* Advances the weekly paper ledger: DCA into the target weights, a parallel VOO sleeve, and tax-loss harvests that rotate into the closest same-category beta peer that is not wash-sale restricted.
 * **`modules/utils.py`**  
   * *What it does:* Contains helper functions and shared utilities used across the pipeline to handle date formatting, data alignments, and logging.

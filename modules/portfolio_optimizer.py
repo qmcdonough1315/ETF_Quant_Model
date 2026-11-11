@@ -110,11 +110,76 @@ def _cap_and_renormalize(w: np.ndarray, max_weight: float) -> np.ndarray:
     return w / w.sum()
 
 
+def _category_index_groups(tickers: list[str]) -> dict[str, list[int]]:
+    groups: dict[str, list[int]] = {}
+    for i, ticker in enumerate(tickers):
+        category = config.ETF_CATEGORY_BY_TICKER.get(ticker, "Other")
+        groups.setdefault(category, []).append(i)
+    return groups
+
+
+def _feasible_category_cap(
+    tickers: list[str],
+    asset_cap: float,
+    desired_cat_cap: float,
+) -> float:
+    """
+    Raise the category cap just enough that sum-to-one remains feasible under
+    the single-name caps. A concentrated candidate pool can otherwise make a
+    hard 30% sleeve limit impossible.
+    """
+    groups = _category_index_groups(tickers)
+    if not groups:
+        return 1.0
+
+    cat_cap = max(desired_cat_cap, asset_cap)
+
+    def capacity(limit: float) -> float:
+        return float(sum(min(limit, len(idxs) * asset_cap) for idxs in groups.values()))
+
+    while capacity(cat_cap) < 1.0 - 1e-9 and cat_cap < 1.0:
+        cat_cap = min(1.0, cat_cap + 0.05)
+    return cat_cap
+
+
+def _enforce_category_caps(
+    w: np.ndarray,
+    tickers: list[str],
+    cat_cap: float,
+    asset_cap: float,
+) -> np.ndarray:
+    """Project weights onto single-name and category caps, then renormalize."""
+    w = np.clip(np.asarray(w, dtype=float), 0.0, asset_cap)
+    if w.sum() <= 0:
+        w = np.ones(len(w), dtype=float) / len(w)
+
+    groups = _category_index_groups(tickers)
+    for _ in range(len(groups) + 2):
+        w = w / w.sum()
+        violated = False
+        for idxs in groups.values():
+            sleeve = float(w[idxs].sum())
+            limit = min(cat_cap, len(idxs) * asset_cap)
+            if sleeve > limit + 1e-12:
+                violated = True
+                scale = limit / sleeve
+                w[idxs] *= scale
+        w = np.clip(w, 0.0, asset_cap)
+        if not violated:
+            break
+
+    if w.sum() <= 0:
+        return np.ones(len(w), dtype=float) / len(w)
+    return w / w.sum()
+
+
 def maximize_sharpe(
     mu: np.ndarray,
     cov: np.ndarray,
     vols: np.ndarray,
+    tickers: list[str] | None = None,
     max_weight: float = None,
+    max_category_weight: float = None,
 ) -> np.ndarray:
     n = len(mu)
     if n == 0:
@@ -124,6 +189,12 @@ def maximize_sharpe(
     if n * cap < 1.0:
         cap = 1.0 / n
 
+    desired_cat_cap = (
+        config.MAX_CATEGORY_WEIGHT if max_category_weight is None else max_category_weight
+    )
+    labels = tickers if tickers is not None else [f"A{i}" for i in range(n)]
+    cat_cap = _feasible_category_cap(labels, cap, desired_cat_cap)
+
     def neg_sharpe(w):
         port_ret = float(w @ mu)
         port_vol = float(np.sqrt(max(w @ cov @ w, 0.0)))
@@ -131,9 +202,21 @@ def maximize_sharpe(
             return 1e6
         return -port_ret / port_vol
 
-    w0 = _inverse_vol_weights(vols, cap)
+    w0 = _enforce_category_caps(_inverse_vol_weights(vols, cap), labels, cat_cap, cap)
     bounds = [(0.0, cap)] * n
-    constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+    constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+
+    if cat_cap < 1.0:
+        for idxs in _category_index_groups(labels).values():
+            if len(idxs) == 0:
+                continue
+            sleeve_cap = min(cat_cap, len(idxs) * cap)
+            constraints.append(
+                {
+                    "type": "ineq",
+                    "fun": lambda w, idx=idxs, limit=sleeve_cap: limit - float(np.sum(w[idx])),
+                }
+            )
 
     result = minimize(
         neg_sharpe,
@@ -145,10 +228,7 @@ def maximize_sharpe(
     )
 
     if result.success and np.isfinite(result.x).all():
-        w = np.clip(result.x, 0.0, cap)
-        if w.sum() <= 0:
-            return w0
-        return w / w.sum()
+        return _enforce_category_caps(result.x, labels, cat_cap, cap)
     return w0
 
 
@@ -156,11 +236,14 @@ def construct_portfolio(
     scores_df: pd.DataFrame,
     prices: pd.DataFrame,
     factor_preds: dict,
-    top_n: int = 10,
+    max_holdings: int | None = None,
 ) -> pd.DataFrame:
     """
     Apply RMW / vol screens, CMA+HML tilts, then long-only max-Sharpe MVO
-    with a per-name weight cap.
+    with single-name and category concentration caps.
+
+    Holdings count is endogenous: keep names above MIN_ASSET_WEIGHT, up to
+    MAX_HOLDINGS. There is no forced minimum count.
     """
     eligible = scores_df.copy()
     eligible = filter_negative_rmw_drag(eligible, factor_preds)
@@ -172,8 +255,12 @@ def construct_portfolio(
     eligible = eligible.copy()
     eligible["Opt_Mu"] = tilted_expected_returns(eligible, factor_preds)
     eligible["Ret_Risk"] = eligible["Total_Expected_Return_3M"] / eligible["Volatility"]
+    eligible["Category"] = eligible["Ticker"].map(
+        lambda t: config.ETF_CATEGORY_BY_TICKER.get(t, "Other")
+    )
 
-    pool_n = max(top_n, min(config.MVO_CANDIDATE_POOL, len(eligible)))
+    holdings_cap = config.MAX_HOLDINGS if max_holdings is None else max_holdings
+    pool_n = max(holdings_cap, min(config.MVO_CANDIDATE_POOL, len(eligible)))
     candidates = eligible.sort_values(
         by=["Opt_Mu", "Ret_Risk"],
         ascending=False,
@@ -184,27 +271,51 @@ def construct_portfolio(
     vols = candidates["Volatility"].to_numpy(dtype=float)
     cov = _covariance_3m(prices, tickers)
 
-    weights = maximize_sharpe(mu, cov, vols)
+    weights = maximize_sharpe(mu, cov, vols, tickers=tickers)
 
     candidates = candidates.copy()
     candidates["Target_Weight"] = weights
+
+    min_w = config.MIN_ASSET_WEIGHT
     holdings = (
-        candidates.loc[candidates["Target_Weight"] > 1e-4]
+        candidates.loc[candidates["Target_Weight"] >= min_w]
         .sort_values("Target_Weight", ascending=False)
-        .head(top_n)
+        .head(holdings_cap)
         .copy()
     )
 
+    # If the min-weight screen wiped everyone out, fall back to the largest weights.
     if holdings.empty:
-        return pd.DataFrame()
+        holdings = (
+            candidates.sort_values("Target_Weight", ascending=False)
+            .head(max(1, min(holdings_cap, len(candidates))))
+            .copy()
+        )
 
     if len(holdings) < len(candidates):
         mu_h = holdings["Opt_Mu"].to_numpy(dtype=float)
         vols_h = holdings["Volatility"].to_numpy(dtype=float)
-        cov_h = _covariance_3m(prices, holdings["Ticker"].tolist())
-        holdings["Target_Weight"] = maximize_sharpe(mu_h, cov_h, vols_h)
+        tickers_h = holdings["Ticker"].tolist()
+        cov_h = _covariance_3m(prices, tickers_h)
+        holdings["Target_Weight"] = maximize_sharpe(mu_h, cov_h, vols_h, tickers=tickers_h)
 
-    holdings["Target_Weight"] = holdings["Target_Weight"] / holdings["Target_Weight"].sum()
+    # Dust filter. Re-project after each drop so scaling the survivors cannot
+    # punch through the single-name or category caps.
+    for _ in range(4):
+        kept = holdings.loc[holdings["Target_Weight"] >= min_w - 1e-12].copy()
+        if kept.empty:
+            return pd.DataFrame()
+        tickers_kept = kept["Ticker"].tolist()
+        raw = kept["Target_Weight"].to_numpy(dtype=float)
+        asset_cap = config.MAX_ASSET_WEIGHT
+        if len(raw) * asset_cap < 1.0:
+            asset_cap = 1.0 / len(raw)
+        cat_cap = _feasible_category_cap(tickers_kept, asset_cap, config.MAX_CATEGORY_WEIGHT)
+        kept["Target_Weight"] = _enforce_category_caps(raw, tickers_kept, cat_cap, asset_cap)
+        holdings = kept
+        if np.all(holdings["Target_Weight"].to_numpy(dtype=float) >= min_w - 1e-12):
+            break
+
     return holdings.sort_values("Target_Weight", ascending=False)
 
 

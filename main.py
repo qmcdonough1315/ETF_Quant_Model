@@ -66,5 +66,12 @@ def main():
         portfolio_sharpe=port_sharpe
     )
 
+    # Paper book lives with the model. A failed ledger must not block the factor export.
+    try:
+        from modules.paper_portfolio import run_paper_portfolio_step
+        run_paper_portfolio_step(top_picks)
+    except Exception as exc:
+        print(f"Paper portfolio step skipped: {exc}")
+
 if __name__ == "__main__":
     main()

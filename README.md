@@ -11,7 +11,9 @@
 This quantitative model projects 3-month forward excess returns for a universe of sector ETFs using a multi-factor framework. Below is a guide to the codebase architecture:
 
 * **`main.py`**  
-  * *What it does:* The core execution engine. It coordinates data ingestion, runs dynamic beta estimation, computes expected factor premiums, and outputs the final ranked list of long-only index weights.
+  * *What it does:* The core execution engine. It coordinates data ingestion, runs dynamic beta estimation, computes expected factor premiums, outputs the final ranked list of long-only index weights, and then advances the paper portfolio ledger.
+* **`modules/paper_portfolio.py`**  
+  * *What it does:* Weekly dollar-cost-averaging and tax-aware ledger. It publishes a summary into the `paper_portfolio` Supabase table. Create that table with `supabase_paper_portfolio.sql`. Each run currently starts from a fresh ledger; lasting lot history needs the prior lots loaded before `process_week`.
 * **`config.py`**  
   * *What it does:* The central configuration file. It stores global parameters such as your target ETF universe, lookback window lengths, and model factor selections (e.g., the Fama-French 5-factor + Carhart momentum model).
 * **`backtest_engine.py`**  

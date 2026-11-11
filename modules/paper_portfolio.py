@@ -19,7 +19,9 @@ import yfinance as yf
 
 import config
 
-WEEKLY_CONTRIBUTION = float(getattr(config, "WEEKLY_CONTRIBUTION_USD", 1000.0))
+WEEKLY_CONTRIBUTION = float(getattr(config, "WEEKLY_CONTRIBUTION_USD", 50_000.0 / 13.0))
+ETF_TARGET_CAPITAL = float(getattr(config, "ETF_TARGET_CAPITAL_USD", 50_000.0))
+DCA_WEEKS = int(getattr(config, "DCA_WEEKS", 13))
 MIN_HOLD_DAYS = int(getattr(config, "MIN_HOLD_DAYS", 91))
 LONG_TERM_DAYS = int(getattr(config, "LONG_TERM_DAYS", 365))
 WASH_SALE_DAYS = int(getattr(config, "WASH_SALE_DAYS", 30))
@@ -235,6 +237,28 @@ def _is_wash_restricted(ledger: Ledger, ticker: str, as_of: pd.Timestamp) -> boo
     return False
 
 
+def _unrealized_pnl(lot: Lot, price: float) -> float:
+    return lot.shares * price - lot.shares * lot.cost_per_share
+
+
+def _sort_lots_least_gain_first(lots: List[Lot], price_by_ticker: Dict[str, float]) -> List[Lot]:
+    """
+    Tax-aware sell order: least unrealized $ gain first (HIFO at a common mark).
+    Prefer selling high-basis lots so low-basis winners can season into LTCG.
+    """
+
+    def key(lot: Lot) -> Tuple[float, float, str, str]:
+        px = price_by_ticker.get(lot.ticker)
+        if px is None or not np.isfinite(px):
+            # Unpriced lots sort last.
+            return (float("inf"), 0.0, lot.opened_on.strftime("%Y-%m-%d"), lot.id)
+        pnl = _unrealized_pnl(lot, px)
+        # Higher cost basis first on ties → more negative / smaller gain.
+        return (pnl, -lot.cost_per_share, lot.opened_on.strftime("%Y-%m-%d"), lot.id)
+
+    return sorted(lots, key=key)
+
+
 def _record_sale(ledger: Ledger, lot: Lot, dt: pd.Timestamp, price: float, reason: str) -> float:
     proceeds = lot.shares * price
     cost = lot.shares * lot.cost_per_share
@@ -254,6 +278,49 @@ def _record_sale(ledger: Ledger, lot: Lot, dt: pd.Timestamp, price: float, reaso
             "amount": proceeds,
             "reason": reason,
             "strategy": lot.strategy,
+            "lot_id": lot.id,
+            "cost_per_share": lot.cost_per_share,
+        }
+    )
+    if pnl >= 0:
+        ledger.cum_realized_gains += pnl
+    else:
+        ledger.cum_realized_losses += -pnl
+        ledger.wash[lot.ticker] = dt
+    return proceeds
+
+
+def _record_partial_sale(
+    ledger: Ledger,
+    lot: Lot,
+    shares: float,
+    dt: pd.Timestamp,
+    price: float,
+    reason: str,
+) -> float:
+    """Sell part of a lot (HIFO trim). Remaining shares stay open on the original lot."""
+    if shares <= 0 or shares > lot.shares + 1e-12:
+        return 0.0
+    if shares >= lot.shares - 1e-12:
+        return _record_sale(ledger, lot, dt, price, reason)
+
+    proceeds = shares * price
+    cost = shares * lot.cost_per_share
+    pnl = proceeds - cost
+    lot.shares -= shares
+    ledger.trades.append(
+        {
+            "date": dt.strftime("%Y-%m-%d"),
+            "ticker": lot.ticker,
+            "side": "sell",
+            "shares": shares,
+            "price": price,
+            "amount": proceeds,
+            "reason": reason,
+            "strategy": lot.strategy,
+            "lot_id": lot.id,
+            "cost_per_share": lot.cost_per_share,
+            "partial": True,
         }
     )
     if pnl >= 0:
@@ -312,6 +379,8 @@ def _evaluate_exits(
     betas: Optional[Dict[str, np.ndarray]] = None,
 ) -> None:
     open_factor = [l for l in ledger.lots if l.status == "open" and l.strategy == "factor"]
+    priced: Dict[str, float] = {}
+    eligible: List[Lot] = []
     for lot in open_factor:
         age = (as_of.normalize() - lot.opened_on.normalize()).days
         if age < MIN_HOLD_DAYS:
@@ -319,7 +388,18 @@ def _evaluate_exits(
         px = _price_on_or_before(opens, lot.ticker, as_of)
         if px is None:
             continue
-        pnl = lot.shares * px - lot.shares * lot.cost_per_share
+        priced[lot.ticker] = px
+        eligible.append(lot)
+
+    # Always consider least-gain / highest-basis lots first when reallocating.
+    for lot in _sort_lots_least_gain_first(eligible, priced):
+        if lot.status != "open":
+            continue
+        px = priced.get(lot.ticker) or _price_on_or_before(opens, lot.ticker, as_of)
+        if px is None:
+            continue
+        age = (as_of.normalize() - lot.opened_on.normalize()).days
+        pnl = _unrealized_pnl(lot, px)
         still = weights.get(lot.ticker, 0.0) > WEIGHT_EPS
 
         if pnl < 0:
@@ -416,6 +496,7 @@ def _summary(ledger: Ledger, as_of: pd.Timestamp, opens: pd.DataFrame, run_count
             strat_cost += cost
 
     contributed = run_count * WEEKLY_CONTRIBUTION
+    etf_float = max(0.0, ETF_TARGET_CAPITAL - min(ETF_TARGET_CAPITAL, contributed))
     return {
         "strategy_value": strat_mv,
         "strategy_cost_basis": strat_cost + ledger.cash_factor,
@@ -429,6 +510,10 @@ def _summary(ledger: Ledger, as_of: pd.Timestamp, opens: pd.DataFrame, run_count
         "cum_unrealized_gains": u_gain,
         "cum_unrealized_losses": u_loss,
         "total_contributed": contributed,
+        "etf_target_capital": ETF_TARGET_CAPITAL,
+        "etf_float_remaining": etf_float,
+        "weekly_contribution": WEEKLY_CONTRIBUTION,
+        "dca_weeks": DCA_WEEKS,
         "open_factor_lots": sum(1 for l in ledger.lots if l.status == "open" and l.strategy == "factor"),
     }
 

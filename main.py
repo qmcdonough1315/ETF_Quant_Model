@@ -4,6 +4,7 @@ from modules.dynamic_beta_estimator import run_kalman_filter_regressions
 from modules.factor_forecaster import generate_factor_forecasts
 from modules.fund_scorer import score_and_rank_funds
 from modules.portfolio_optimizer import portfolio_expected_metrics
+from modules.options_composite import composites_from_scores_df
 from modules.supabase_exporter import export_to_supabase
 
 try:
@@ -38,12 +39,13 @@ def main():
 
     # 4. Score funds and size via long-only max-Sharpe MVO
     #    (single-name + category caps; holdings count is endogenous)
-    top_picks, top_betas = score_and_rank_funds(
+    top_picks, top_betas, scores_df = score_and_rank_funds(
         beta_profiles=beta_profiles,
         forecast_report=forecast_report,
         prices=prices,
         restricted_tickers=recent_wash_sales,
     )
+    options_composites = composites_from_scores_df(scores_df)
 
     n_holdings = len(top_picks)
     print(
@@ -71,6 +73,7 @@ def main():
         portfolio_return=port_exp_return,
         portfolio_vol=port_vol,
         portfolio_sharpe=port_sharpe,
+        options_composites=options_composites,
     )
 
     # 5. Paper DCA + tax-aware ledger (summary export; full history replayed on site).

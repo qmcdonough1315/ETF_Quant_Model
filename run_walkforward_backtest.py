@@ -83,7 +83,7 @@ def run_walkforward_backtest(
         try:
             beta_profiles = run_kalman_filter_regressions(hist_returns, hist_factors)
             forecast_report = generate_factor_forecasts(hist_factors, hist_macro, threshold=config.MIN_FACTOR_THRESHOLD)
-            top_picks_df, top_betas_df = score_and_rank_funds(
+            top_picks_df, top_betas_df, _scores_df = score_and_rank_funds(
                 beta_profiles,
                 forecast_report,
                 prices=hist_returns,

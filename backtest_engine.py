@@ -59,7 +59,7 @@ def run_historical_backtest(
         beta_profiles = run_kalman_filter_regressions(hist_etfs, hist_factors)
         forecast_report = generate_factor_forecasts(hist_factors, hist_macro)
 
-        top_picks_df, _top_betas_df = score_and_rank_funds(
+        top_picks_df, _top_betas_df, _scores_df = score_and_rank_funds(
             beta_profiles,
             forecast_report,
             prices=hist_etfs,

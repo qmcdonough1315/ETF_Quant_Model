@@ -22,5 +22,5 @@ Liquid ETF options: SPY, QQQ, IWM, and major sector ETFs (`PHASE1_OPTIONABLE_ETF
 - Never pull capital from the ETF sleeve
 
 ## Code
-- Python: `modules/options_sleeve.py`, constants in `config.py`
-- Dashboard rules UI: `quirk_macro_web_dev` `OptionsSleevePanel` + `options-sleeve-rules.ts`
+- Python: `modules/options_sleeve.py`, `modules/options_orders.py`, constants in `config.py`
+- Dashboard: `OptionsSleevePanel` + `OptionsTradeDesk` + `options-sleeve-rules.ts` / `options-orders.ts`

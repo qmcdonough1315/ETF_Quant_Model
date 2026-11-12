@@ -146,6 +146,47 @@ def place_mleg_order(payload: dict[str, Any], *, confirm: bool = False) -> dict[
     return data
 
 
+def place_equity_order(payload: dict[str, Any], *, confirm: bool = False) -> dict[str, Any]:
+    """
+    Submit a single-leg equity buy (ETF DCA) to Alpaca paper.
+    Prefer notional market buys for fractional DCA; qty buys also accepted.
+    """
+    if not confirm:
+        raise RuntimeError("Set confirm=True to submit a paper equity order.")
+    if payload.get("order_class") in ("mleg", "bracket", "oco", "oto"):
+        raise RuntimeError("Use place_mleg_order for multi-leg / complex order classes.")
+    side = str(payload.get("side") or "").lower()
+    if side != "buy":
+        raise RuntimeError("Migration #3 v1 only places equity buys (HIFO sells stay on ledger path).")
+    symbol = str(payload.get("symbol") or "").strip().upper()
+    if not symbol:
+        raise RuntimeError("symbol required")
+    has_notional = payload.get("notional") is not None and str(payload.get("notional")).strip() != ""
+    has_qty = payload.get("qty") is not None and str(payload.get("qty")).strip() != ""
+    if has_notional == has_qty:
+        raise RuntimeError("Provide exactly one of notional or qty.")
+    body = {
+        "symbol": symbol,
+        "side": "buy",
+        "type": str(payload.get("type") or "market"),
+        "time_in_force": str(payload.get("time_in_force") or "day"),
+    }
+    if has_notional:
+        try:
+            notional = float(payload.get("notional"))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("notional must be a number") from exc
+        if notional < 1.0:
+            raise RuntimeError("notional must be >= 1.00")
+        body["notional"] = f"{notional:.2f}"
+    else:
+        body["qty"] = str(payload.get("qty"))
+    data = alpaca_post("/orders", body)
+    if not isinstance(data, dict):
+        raise RuntimeError("Unexpected Alpaca order payload")
+    return data
+
+
 def paper_ledger_summary() -> dict[str, Any]:
     """Compact snapshot for logging / export."""
     if not configured():

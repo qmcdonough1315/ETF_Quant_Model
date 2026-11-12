@@ -27,4 +27,4 @@ Aliases `APCA_API_KEY_ID` / `APCA_API_SECRET_KEY` / `APCA_API_BASE_URL` are also
 
 1. **Done:** Options Book + Summary read Alpaca paper account/positions when secrets are present.
 2. **Done:** Propose/place defined-risk option orders from the factor×IVR signal engine (Options Book paper trade desk).
-3. **Later:** Drive ETF DCA fills through Alpaca orders while keeping HIFO/TLH lot logic in our ledger (or sync lots from Alpaca fills).
+3. **Done (buys):** Drive weekly ETF DCA fills through Alpaca paper equity orders (`modules/etf_orders.py` + `place_equity_order`). HIFO/TLH sell path stays in the paper ledger; fills map to lots via `lot_from_alpaca_fill`. VOO sleeve optional on propose. Sells / full TLH broker execution are still ledger-side.

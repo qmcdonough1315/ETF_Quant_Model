@@ -1,7 +1,7 @@
 # Paper Portfolio & Tax-Aware DCA Strategy
 
 ## Objective
-Simulate (and later execute) a weekly paper account that dollar-cost averages **~$3,846.15** (`$50,000 ÷ 13`) into each Sunday model run’s target weights, while applying a tax-aware exit policy, HIFO lot selection, and wash-sale-safe tax-loss harvesting (TLH).
+Simulate — and for weekly **buys**, execute on Alpaca paper — a weekly paper account that dollar-cost averages **~$3,846.15** (`$50,000 ÷ 13`) into each Sunday model run’s target weights, while applying a tax-aware exit policy, HIFO lot selection, and wash-sale-safe tax-loss harvesting (TLH). Equity buy proposals/orders live in `modules/etf_orders.py` + `place_equity_order`; HIFO/TLH **sells** remain ledger-side.
 
 The broader paper book is **$100k**:
 - **$50k** ETF factor sleeve (13-week DCA ladder)

@@ -11,6 +11,13 @@ sys.path.insert(0, str(ROOT))
 import config
 from datetime import datetime, timezone
 
+from modules.etf_orders import (
+    allocate_weekly_dca,
+    build_equity_buy_payload,
+    lot_from_alpaca_fill,
+    normalize_weights,
+    propose_weekly_etf_buys,
+)
 from modules.options_orders import (
     OptionContractQuote,
     build_mleg_payload,
@@ -122,10 +129,44 @@ def test_options_order_builder():
     assert skip.structure == "skip_low_iv"
 
 
+def test_etf_dca_allocation_from_fraction_weights():
+    buys = allocate_weekly_dca({"SPY": 0.6, "QQQ": 0.4}, weekly_contribution=1000.0)
+    assert len(buys) == 2
+    assert buys[0].ticker == "SPY" and abs(buys[0].notional - 600.0) < 1e-9
+    assert buys[1].ticker == "QQQ" and abs(buys[1].notional - 400.0) < 1e-9
+    payload = build_equity_buy_payload("SPY", 600.0)
+    assert payload.to_dict()["side"] == "buy"
+    assert payload.to_dict()["notional"] == "600.00"
+    assert payload.to_dict()["type"] == "market"
+
+
+def test_etf_dca_accepts_percent_weights_and_voo():
+    norm = normalize_weights({"XLK": 40.0, "XLF": 60.0})
+    assert abs(norm["XLK"] - 0.4) < 1e-9
+    proposal = propose_weekly_etf_buys({"XLK": 40.0, "XLF": 60.0}, weekly_contribution=100.0, include_voo=True)
+    assert proposal["voo_buy"]["ticker"] == "VOO"
+    assert abs(proposal["deployed_notional"] - 100.0) < 1e-9
+    lot = lot_from_alpaca_fill(
+        ticker="XLK",
+        shares=1.5,
+        price=200.0,
+        filled_at="2026-11-12T15:30:00Z",
+        order_id="ord-1",
+    )
+    assert lot["ticker"] == "XLK"
+    assert lot["shares"] == 1.5
+    assert lot["cost_per_share"] == 200.0
+    assert lot["opened_on"] == "2026-11-12"
+    assert lot["source"] == "alpaca_fill"
+    assert lot["status"] == "open"
+
+
 if __name__ == "__main__":
     test_weekly_contribution_is_fifty_k_over_thirteen()
     test_hifo_sells_high_basis_before_low_basis_winner()
     test_deepest_loss_sorts_first()
     test_options_regime_map()
     test_options_order_builder()
+    test_etf_dca_allocation_from_fraction_weights()
+    test_etf_dca_accepts_percent_weights_and_voo()
     print("ok")

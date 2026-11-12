@@ -65,7 +65,7 @@ def score_and_rank_funds(
 
     scores_df = pd.DataFrame(scoring_data)
     if scores_df.empty:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     # Shrinkage & Total Expected Return
     mean_alpha = scores_df["Raw_Alpha_3M"].mean()
@@ -77,7 +77,7 @@ def score_and_rank_funds(
 
     scores_df = attach_horizon_volatility(scores_df, prices)
     if scores_df.empty:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     top_picks = construct_portfolio(
         scores_df=scores_df,
@@ -86,7 +86,7 @@ def score_and_rank_funds(
         max_holdings=max_holdings,
     )
     if top_picks.empty:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), scores_df
 
     beta_cols = [
         "Ticker",
@@ -99,4 +99,5 @@ def score_and_rank_funds(
     ]
     top_betas_df = top_picks[beta_cols].copy()
 
-    return top_picks, top_betas_df
+    # Full scored universe (pre-MVO) for options-sleeve composites / analytics.
+    return top_picks, top_betas_df, scores_df

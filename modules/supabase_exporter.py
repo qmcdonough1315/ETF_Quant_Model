@@ -9,10 +9,12 @@ def export_to_supabase(
     portfolio_return: float = None, 
     portfolio_vol: float = None, 
     portfolio_sharpe: float = None,
-    top_betas: pd.DataFrame = None
+    top_betas: pd.DataFrame = None,
+    options_composites: dict = None,
 ):
     """
-    Exports Factor Returns, Portfolio Weights, Fund Returns, and Summary Metrics to Supabase.
+    Exports Factor Returns, Portfolio Weights, Fund Returns, Summary Metrics,
+    and Phase 1 options composites to Supabase.
     """
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
@@ -62,7 +64,19 @@ def export_to_supabase(
                 }
             )
 
-    # 3. Format Portfolio Level Summary Metrics
+    # 3. Options sleeve composites (normalized Phase 1 expected returns)
+    if options_composites:
+        for ticker, value in options_composites.items():
+            records.append(
+                {
+                    "execution_date": today,
+                    "data_type": "options_composite",
+                    "ticker_or_factor": str(ticker).upper(),
+                    "value": float(value),
+                }
+            )
+
+    # 4. Format Portfolio Level Summary Metrics
     if portfolio_return is not None:
         records.append({
             "execution_date": today,

@@ -21,6 +21,12 @@ Liquid ETF options: SPY, QQQ, IWM, and major sector ETFs (`PHASE1_OPTIONABLE_ETF
 - Options stress must fit inside the $25k cash reserve
 - Never pull capital from the ETF sleeve
 
+## IV Rank data (live, no demo)
+- **Definition (v1):** ~30 DTE ATM IV = average of call and put Black–Scholes IVs from mid prices.
+- **Bootstrap:** ThetaData free-tier EOD (`run_iv_bootstrap.py`) → `option_iv_history` (see `supabase_option_iv_history.sql`).
+- **Ongoing:** Alpaca ATM IV snapshots append to the same table (source differs); desk must never invent IVR.
+- **Composite:** Cross-sectional z-score of Phase 1 ETF `Total_Expected_Return_3M` exported as `factor_predictions.data_type = options_composite`.
+
 ## Code
-- Python: `modules/options_sleeve.py`, `modules/options_orders.py`, constants in `config.py`
+- Python: `modules/options_sleeve.py`, `modules/options_orders.py`, `modules/thetadata_iv_bootstrap.py`, `modules/options_composite.py`, constants in `config.py`
 - Dashboard: `OptionsSleevePanel` + `OptionsTradeDesk` + `options-sleeve-rules.ts` / `options-orders.ts`

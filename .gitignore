@@ -1,1 +1,4 @@
 __pycache__/
+
+# IV bootstrap artifacts
+data/option_iv_history/

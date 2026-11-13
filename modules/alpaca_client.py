@@ -148,26 +148,31 @@ def place_mleg_order(payload: dict[str, Any], *, confirm: bool = False) -> dict[
 
 def place_equity_order(payload: dict[str, Any], *, confirm: bool = False) -> dict[str, Any]:
     """
-    Submit a single-leg equity buy (ETF DCA) to Alpaca paper.
-    Prefer notional market buys for fractional DCA; qty buys also accepted.
+    Submit a single-leg equity order to Alpaca paper.
+
+    Buys: prefer notional market orders for fractional DCA (qty also OK).
+    Sells (Wave B #6): qty market orders only (TLH/HIFO propose path).
     """
     if not confirm:
         raise RuntimeError("Set confirm=True to submit a paper equity order.")
     if payload.get("order_class") in ("mleg", "bracket", "oco", "oto"):
         raise RuntimeError("Use place_mleg_order for multi-leg / complex order classes.")
     side = str(payload.get("side") or "").lower()
-    if side != "buy":
-        raise RuntimeError("Migration #3 v1 only places equity buys (HIFO sells stay on ledger path).")
+    if side not in {"buy", "sell"}:
+        raise RuntimeError("side must be buy or sell")
     symbol = str(payload.get("symbol") or "").strip().upper()
     if not symbol:
         raise RuntimeError("symbol required")
     has_notional = payload.get("notional") is not None and str(payload.get("notional")).strip() != ""
     has_qty = payload.get("qty") is not None and str(payload.get("qty")).strip() != ""
-    if has_notional == has_qty:
+    if side == "sell":
+        if not has_qty or has_notional:
+            raise RuntimeError("Equity sells require qty (not notional).")
+    elif has_notional == has_qty:
         raise RuntimeError("Provide exactly one of notional or qty.")
     body = {
         "symbol": symbol,
-        "side": "buy",
+        "side": side,
         "type": str(payload.get("type") or "market"),
         "time_in_force": str(payload.get("time_in_force") or "day"),
     }

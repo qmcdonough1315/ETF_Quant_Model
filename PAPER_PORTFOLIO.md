@@ -42,4 +42,21 @@ Week-1 QQQ lot at $100 basis and week-12 QQQ lot at $200 basis: if the model dro
 ## Persistence (model repo)
 Weekly `main.py` calls `modules/paper_portfolio.py` after portfolio construction and inserts that week's summary into Supabase table `paper_portfolio` (see `supabase_paper_portfolio.sql`). The call passes the Kalman beta profiles so a harvest can rotate into the closest same-sleeve peer.
 
-The weekly step still starts from an empty ledger unless a caller passes a prior `Ledger`. Multi-week lot continuity is not loaded back from `paper_lots` yet. The Quirk Macro Factor tab keeps replaying historical `factor_predictions.portfolio_weights` with Yahoo daily opens via `src/lib/paper-portfolio.server.ts`.
+**Multi-week continuity (Wave B #2):** apply `supabase_paper_ledger_continuity.sql`, then the weekly step loads/saves:
+- `paper_lots` — open and closed tax lots
+- `paper_wash_sales` — active wash-sale dates
+- `paper_ledger_state` — cash, cumulative realized P&amp;L, `run_count`
+
+`main.py` feeds active wash restrictions (including substantially identical peers) into `score_and_rank_funds` before MVO. Empty DB → empty ledger (no demo lots).
+
+**TLH sells (Wave B #6):** after each week the ledger emits equity **sell proposals** (`propose_tlh_sells`). Default is propose-and-confirm (`PAPER_AUTO_PLACE_SELLS = False`). Set that flag True only for paper auto-place with `confirm=True`.
+
+**Reconcile (Wave B #5):**
+
+```bash
+PYTHONPATH=. python3 scripts/reconcile_paper_book.py
+```
+
+Compares latest model weights, open `paper_lots`, and Alpaca paper equity positions; exits non-zero on material drift.
+
+The Quirk Macro Factor tab may still replay historical `factor_predictions.portfolio_weights` with Yahoo daily opens via `src/lib/paper-portfolio.server.ts` for UI history.

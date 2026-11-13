@@ -24,11 +24,45 @@ jobs:
         python -m pip install --upgrade pip
         pip install pandas numpy scikit-learn pykalman supabase alpaca-py getfactormodels yfinance pandas_datareader lightgbm
 
+    # Required GitHub Actions secrets (names must match modules/alpaca_client.py):
+    #   SUPABASE_URL, SUPABASE_KEY
+    #   ALPACA_API_KEY_ID, ALPACA_API_SECRET_KEY
+    # Optional: ALPACA_API_BASE_URL (defaults to https://paper-api.alpaca.markets)
+    # Legacy secret names ALPACA_API_KEY / ALPACA_SECRET_KEY are mapped below if present.
+    - name: Assert required secrets present (values never printed)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+        ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+        ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+        ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      run: |
+        python - <<'PY'
+        import os, sys
+        missing = []
+        for k in ("SUPABASE_URL", "SUPABASE_KEY"):
+            if not (os.environ.get(k) or "").strip():
+                missing.append(k)
+        alpaca_id = (os.environ.get("ALPACA_API_KEY_ID") or os.environ.get("ALPACA_API_KEY") or "").strip()
+        alpaca_sec = (os.environ.get("ALPACA_API_SECRET_KEY") or os.environ.get("ALPACA_SECRET_KEY") or "").strip()
+        if not alpaca_id:
+            missing.append("ALPACA_API_KEY_ID (or legacy ALPACA_API_KEY)")
+        if not alpaca_sec:
+            missing.append("ALPACA_API_SECRET_KEY (or legacy ALPACA_SECRET_KEY)")
+        if missing:
+            print("Missing required secrets:", ", ".join(missing))
+            sys.exit(1)
+        print("Secret presence OK (values not shown)")
+        PY
+
     - name: Execute Model and Sync to Supabase
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
-        ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        # Canonical names read by modules/alpaca_client.py
+        ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID || secrets.ALPACA_API_KEY }}
+        ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY || secrets.ALPACA_SECRET_KEY }}
+        ALPACA_API_BASE_URL: ${{ secrets.ALPACA_API_BASE_URL }}
       run: |
         python main.py

@@ -165,18 +165,32 @@ options_orders: pick expiry / strikes from chain → TradeProposal
 Alpaca paper mleg order (credit limit_price is negative)
 ```
 
+### Mid → limit conservatism (fills)
+
+Live proposals do **not** assume mid fills:
+
+| Step | Behavior |
+|---|---|
+| Package credit | Prefer **sell@bid / buy@ask** when quotes exist (`OPTIONS_CREDIT_CONSERVATIVE_SIDE`); else mid |
+| Working limit | Soften that credit by `OPTIONS_FILL_CREDIT_FRACTION` (default **0.92**) → negative Alpaca `limit_price` |
+| Debit refusal | Net debit packages are skipped |
+
+So a $1.00 mid credit with a 20¢ wide book might package nearer $0.80–$0.90 on sides, then limit around **−0.74 to −0.83** after the 0.92 haircut — intentionally leaving edge for the market rather than filling “at mid” in research or paper.
+
 Key modules:
 
 | Module | Role |
 |---|---|
 | `modules/options_sleeve.py` | Regime map, sizing helpers, Phase 1 universe |
 | `modules/options_composite.py` | Cross-sectional z-scores |
-| `modules/options_orders.py` | Signal + chain → multi-leg proposal |
+| `modules/options_orders.py` | Signal + chain → multi-leg proposal (bid/ask credit + limit haircut) |
+| `modules/options_sleeve_backtest.py` | Point-in-time sleeve research loop |
 | `modules/black_scholes_iv.py` | Mid → BS IV |
 | `modules/iv_rank.py` | IVR from stored history |
 | `modules/thetadata_iv_bootstrap.py` | ~30 DTE ATM IV history pull |
 | `modules/alpaca_client.py` | Paper account / `place_mleg_order` |
 | `run_iv_bootstrap.py` | CLI for history bootstrap |
+| `run_options_sleeve_backtest.py` | Options sleeve backtest CLI |
 
 Web desk (Quirk Macro repo): Options Book UI proposes/places using the same rules (`options-orders.ts`, `options-sleeve-rules.ts`). Paper-only placement requires `confirm=true` against `paper-api.alpaca.markets`.
 
@@ -198,14 +212,22 @@ The options sleeve is **younger** than the ETF walk-forward. Treat evaluation in
 - Compare sleeve equity / buying power on Alpaca paper vs the $25k notional.
 - Monitor whether losses ever pressure the $25k cash reserve rule.
 
-### 7.3 What we do *not* claim yet
+### 7.3 Options sleeve research backtest (crude, honest)
 
-There is **no** multi-year walk-forward for options comparable to `run_walkforward_backtest.py` for ETFs. Until that exists, options results are **paper-process evidence**, not a published edge study. When a formal options backtest is added, it should:
+Script: `run_options_sleeve_backtest.py` (helpers in `modules/options_sleeve_backtest.py`).
 
-1. Reconstruct IVR with point-in-time history only.
-2. Use the same regime map and DTE/Δ rules.
-3. Include friction (bid/ask, early exits) and the capital wall vs the ETF book.
-4. Benchmark against “always skip,” “sell 25Δ puts every month,” and buy-and-hold SPY *on a risk-matched notional* — not raw dollar P&amp;L alone.
+1. Reconstruct IVR with **point-in-time** `option_iv_history` only (CSV or Supabase) — **no demo IV**.
+2. Same Q1–Q4 map / IVR gate; DTE≈37 mid-window; Δ via OTM% proxies when chains are missing.
+3. Marks via Black–Scholes ATM IV; entry credit softened by `OPTIONS_FILL_CREDIT_FRACTION`; exits at **50%** profit / **2×** stop / expiry.
+4. Benchmarks: **always-skip**, **naive short-put**, **risk-matched SPY hold** on the $25k sleeve.
+5. Factor axis stand-in: trailing ~3M return z-scores (documented; not the live weekly composite export).
+
+Sample is bounded by IV history quality (see #8). Stress IDs without overlap are refused, not fabricated.
+
+```bash
+PYTHONPATH=. python3 run_options_sleeve_backtest.py --from-supabase
+PYTHONPATH=. python3 run_options_sleeve_backtest.py --period HOLD_OUT --from-supabase
+```
 
 ### 7.4 Coupling check with the ETF model
 

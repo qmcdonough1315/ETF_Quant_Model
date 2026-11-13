@@ -17,7 +17,12 @@ import numpy as np
 import pandas as pd
 
 import config
-from modules.backtest_returns import net_period_return, normalize_weights, portfolio_period_return
+from modules.backtest_returns import (
+    apply_cost_ladder,
+    net_period_return,
+    normalize_weights,
+    portfolio_period_return,
+)
 from modules.data_ingestion import fetch_all_data
 from modules.dynamic_beta_estimator import run_kalman_filter_regressions
 from modules.factor_forecaster import generate_factor_forecasts
@@ -82,6 +87,7 @@ def run_walkforward_backtest(
     cost_bps_one_way: float = None,
     period_id: str = "CUSTOM",
     universe: Optional[list[str]] = None,
+    cost_sensitivity: bool = False,
 ):
     if max_holdings is None:
         max_holdings = config.MAX_HOLDINGS
@@ -92,11 +98,22 @@ def run_walkforward_backtest(
     horizon_label = f"{rebalance_step_months}M"
     mode = "equal-weight ablation" if equal_weight else "production Target_Weight"
     traded_universe = [t.upper() for t in (universe or list(config.ETF_POPULATION))]
+    sens_bps = tuple(
+        float(x)
+        for x in getattr(
+            config, "BACKTEST_EQUITY_COST_SENSITIVITY_BPS", (0.0, 5.0, 10.0)
+        )
+    )
 
     print("=" * 70)
     print(f"WALK-FORWARD BACKTEST [{period_id}] ({start_date} → {end_date or 'latest'})")
     print(f"Holding / rebalance step: {rebalance_step_months} months | mode: {mode}")
     print(f"Equity cost: {cost_bps_one_way:.1f} bps one-way on traded notional")
+    if abs(float(cost_bps_one_way)) < 1e-12:
+        print(
+            "NOTE: 0 bps is the research-optimistic baseline — not a silent free-fill claim. "
+            f"Run --cost-sensitivity for {sens_bps} bps ladder."
+        )
     print(f"Universe size: {len(traded_universe)} | Starting capital: ${initial_capital:,.2f}")
     print("=" * 70)
 
@@ -174,6 +191,7 @@ def run_walkforward_backtest(
 
         cost = 0.0
         turnover = 0.0
+        gross = 0.0
         if selected_tickers and not top_picks_df.empty:
             period_returns = returns_df.loc[holding_dates, selected_tickers]
             weights = top_picks_df.set_index("Ticker")["Target_Weight"]
@@ -220,6 +238,7 @@ def run_walkforward_backtest(
                 ),
                 "Top_Picks": ", ".join(selected_tickers),
                 f"Strategy_Return_{horizon_label}": strat_ret,
+                "Gross_Return": gross,
                 f"VTI_Return_{horizon_label}": float(vti_ret),
                 f"SPY_Return_{horizon_label}": float(spy_ret),
                 f"VGT_Return_{horizon_label}": float(vgt_ret),
@@ -296,8 +315,47 @@ def run_walkforward_backtest(
     if "Cost" in results_df.columns:
         print(
             f"\nAvg turnover={results_df['Turnover'].mean():.3f} | "
-            f"total costs deducted={results_df['Cost'].sum():.4%}"
+            f"total costs deducted={results_df['Cost'].sum():.4%} "
+            f"@ {cost_bps_one_way:.1f} bps one-way"
         )
+
+    if cost_sensitivity and "Gross_Return" in results_df.columns:
+        ladder = apply_cost_ladder(
+            results_df["Gross_Return"],
+            results_df["Turnover"],
+            sens_bps,
+            initial_capital=initial_capital,
+            risk_free_rate=risk_free_rate,
+            periods_per_year=periods_per_year,
+        )
+        print("\n" + "=" * 80)
+        print("EQUITY COST SENSITIVITY (same gross path / turnover; 0 / 5 / 10 bps)")
+        print("=" * 80)
+        show = ladder.copy()
+        show["final_value"] = show["final_value"].map(lambda v: f"${v:,.2f}")
+        show["total_return"] = show["total_return"].map(lambda v: f"{v*100:+.2f}%")
+        show["total_costs"] = show["total_costs"].map(lambda v: f"{v:.4%}")
+        show["avg_turnover"] = show["avg_turnover"].map(lambda v: f"{v:.3f}")
+        show["sharpe"] = show["sharpe"].map(lambda v: f"{v:.2f}")
+        show = show.rename(
+            columns={
+                "cost_bps_one_way": "bps",
+                "final_value": "Final Value",
+                "total_return": "Total Return",
+                "total_costs": "Total Costs",
+                "avg_turnover": "Avg Turnover",
+                "sharpe": "Sharpe",
+            }
+        )
+        print(show.to_string(index=False))
+        print(
+            "\nHow costs affect headline Sharpe: higher one-way bps shrinks net period "
+            "returns one-for-one with turnover×bps; Sharpe usually falls unless turnover "
+            "is near zero. Prefer the 5–10 bps columns for implementation realism."
+        )
+        print("=" * 80 + "\n")
+        results_df.attrs["cost_sensitivity"] = ladder
+
     print("=" * 80 + "\n")
 
     return results_df
@@ -325,6 +383,11 @@ def main() -> None:
         type=float,
         default=None,
         help="One-way equity cost bps (default config.BACKTEST_EQUITY_COST_BPS_ONE_WAY)",
+    )
+    parser.add_argument(
+        "--cost-sensitivity",
+        action="store_true",
+        help="After one walk-forward, report 0/5/10 bps ladder on the same gross/turnover path",
     )
     parser.add_argument(
         "--smoke",
@@ -362,6 +425,7 @@ def main() -> None:
         cost_bps_one_way=args.cost_bps,
         period_id=period_id,
         universe=universe,
+        cost_sensitivity=bool(args.cost_sensitivity),
     )
 
 

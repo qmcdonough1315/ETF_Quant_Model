@@ -115,3 +115,60 @@ def net_period_return(
     turnover = one_way_turnover(weights_new, weights_old)
     cost = equity_rebalance_cost(weights_new, weights_old, one_way_bps=one_way_bps)
     return float(gross_return) - cost, cost, turnover
+
+
+def cost_from_turnover(one_way_turnover_frac: float, one_way_bps: float) -> float:
+    """Cost as NAV fraction given already-computed one-way turnover."""
+    bps = float(one_way_bps)
+    if bps <= 0:
+        return 0.0
+    traded = 2.0 * float(one_way_turnover_frac)
+    return float(traded * (bps / 10_000.0))
+
+
+def apply_cost_ladder(
+    gross_returns: pd.Series,
+    turnovers: pd.Series,
+    bps_levels: tuple[float, ...] | list[float],
+    *,
+    initial_capital: float = 10_000.0,
+    risk_free_rate: float = 0.03,
+    periods_per_year: float = 4.0,
+) -> pd.DataFrame:
+    """
+    Re-apply several one-way equity cost assumptions to the same gross path.
+
+    Avoids re-running the model for 0 / 5 / 10 bps sensitivity. Returns one row
+    per bps level with total return, ending value, total costs, and Sharpe.
+    """
+    import math
+
+    g = pd.to_numeric(gross_returns, errors="coerce").fillna(0.0).astype(float)
+    t = pd.to_numeric(turnovers, errors="coerce").fillna(0.0).astype(float)
+    rows = []
+    for bps in bps_levels:
+        costs = t.map(lambda x, b=float(bps): cost_from_turnover(x, b))
+        nets = g - costs
+        value = float(initial_capital)
+        for r in nets:
+            value *= 1.0 + float(r)
+        tot_ret = (value / float(initial_capital)) - 1.0
+        # Sharpe on net period returns
+        if len(nets) == 0 or float(nets.std()) == 0:
+            sharpe = 0.0
+        else:
+            rf_period = (1 + risk_free_rate) ** (1 / periods_per_year) - 1
+            sharpe = ((float(nets.mean()) - rf_period) * periods_per_year) / (
+                float(nets.std()) * math.sqrt(periods_per_year)
+            )
+        rows.append(
+            {
+                "cost_bps_one_way": float(bps),
+                "final_value": value,
+                "total_return": tot_ret,
+                "total_costs": float(costs.sum()),
+                "avg_turnover": float(t.mean()) if len(t) else 0.0,
+                "sharpe": sharpe,
+            }
+        )
+    return pd.DataFrame(rows)

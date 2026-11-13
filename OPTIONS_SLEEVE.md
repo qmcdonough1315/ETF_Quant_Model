@@ -30,6 +30,15 @@ Liquid ETF options: SPY, QQQ, IWM, and major sector ETFs (`PHASE1_OPTIONABLE_ETF
 - **Ongoing:** Alpaca ATM IV snapshots append to the same table (source differs); desk must never invent IVR.
 - **Composite:** Cross-sectional z-score of Phase 1 ETF `Total_Expected_Return_3M` exported as `factor_predictions.data_type = options_composite`.
 
+## Fills / costs
+- Package credit prefers sell@bid / buy@ask; working limit softens by `OPTIONS_FILL_CREDIT_FRACTION` (≈0.92). See OPTIONS_BOOK § Mid → limit.
+- Equity walk-forward: `--cost-sensitivity` for 0/5/10 bps ladder.
+
+## Research backtest
+```bash
+PYTHONPATH=. python3 run_options_sleeve_backtest.py --from-supabase
+```
+
 ## Code
-- Python: `modules/options_sleeve.py`, `modules/options_orders.py`, `modules/thetadata_iv_bootstrap.py`, `modules/options_composite.py`, constants in `config.py`
+- Python: `modules/options_sleeve.py`, `modules/options_orders.py`, `modules/options_sleeve_backtest.py`, `modules/thetadata_iv_bootstrap.py`, `modules/options_composite.py`, constants in `config.py`
 - Dashboard: `OptionsSleevePanel` + `OptionsTradeDesk` + `options-sleeve-rules.ts` / `options-orders.ts`

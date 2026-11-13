@@ -90,10 +90,10 @@ Implement item #3 from AGENT_CHECKLIST_1_13.md: joint ETF+options risk policy an
 **Problem:** Backtests/paper can ignore equity spreads and options bid/ask; carry looks too clean.
 
 **Done when**
-- [ ] Equity walk-forward applies configurable bps (build on #1 hook)
-- [ ] Options proposal path documents mid→limit conservatism (already negative credit limit; tighten if needed)
-- [ ] Sensitivity table in docs or script output: 0 / 5 / 10 bps equity
-- [ ] No silent zero-cost assumption in the “canonical” backtest entrypoint
+- [x] Equity walk-forward applies configurable bps (build on #1 hook)
+- [x] Options proposal path documents mid→limit conservatism (already negative credit limit; tighten if needed)
+- [x] Sensitivity table in docs or script output: 0 / 5 / 10 bps equity
+- [x] No silent zero-cost assumption in the “canonical” backtest entrypoint
 
 **Prompt**
 
@@ -212,11 +212,11 @@ Item #9: clarify options execution boundary. Default recommendation: keep human-
 **Problem:** No multi-year options walk-forward comparable to ETF research.
 
 **Done when**
-- [ ] Script replays Phase 1 rules with point-in-time IV history only
-- [ ] Applies 50% profit / 2× stop heuristics (documented simplifications OK)
-- [ ] Benchmarks: always-skip; naive short-put; risk-matched SPY hold
-- [ ] Honest limitations section (no fantasy fills)
-- [ ] Depends on #8 history quality
+- [x] Script replays Phase 1 rules with point-in-time IV history only
+- [x] Applies 50% profit / 2× stop heuristics (documented simplifications OK)
+- [x] Benchmarks: always-skip; naive short-put; risk-matched SPY hold
+- [x] Honest limitations section (no fantasy fills)
+- [x] Depends on #8 history quality
 
 **Prompt**
 
@@ -324,13 +324,13 @@ Also add BACKTEST_PERIODS.md (and optional config dict) with the period menu fro
 | #1 Walk-forward weights | Wave A | cursor/walkforward-weights-c180 | done (PR) |
 | #2 Ledger persistence | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #3 Kill-switch policy | Wave C | cursor/wave-c-risk-policy-c180 | done (PR) |
-| #4 Costs | | | |
+| #4 Costs | Wave D | cursor/wave-d-costs-options-backtest-def2 | done (PR) |
 | #5 Reconcile | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #6 TLH sells | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #7 Actions secrets | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #8 IV refresh + XLRE | | | |
 | #9 Desk boundary | | | |
-| #10 Options backtest | | | |
+| #10 Options backtest | Wave D | cursor/wave-d-costs-options-backtest-def2 | done (PR) |
 | #11 Assignment/ex-div | | | |
 | #12 Liquidity caps | | | |
 | #13 LP language | | | |

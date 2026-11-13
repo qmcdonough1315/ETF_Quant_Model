@@ -1,35 +1,271 @@
 # ETF Quant Model
 
-## Workflow Pipeline
-* **Universe:** 286 ETFs in 21 sleeves (`ETF_CATEGORIES` in `config.py`). Construction is long-only max-Sharpe with a 12% single-name cap, a 30% category cap, and an endogenous holdings count (names at or above a 1% weight, at most 15).
-* **Paper ledger and TLH:** Each model run dollar-cost averages **~$3,846** (`$50k ÷ 13`) into the target weights and the same into VOO, laddering the $50k ETF sleeve over the 3-month min hold. Factor lots use a 91-day minimum hold, HIFO / least-gain lot selection on sells, a 30-day wash-sale window (including substantially identical peers), and beta-distance substitutes inside the same sleeve. See `PAPER_PORTFOLIO.md`.
-* **Options / vol sleeve:** Separate $25k defined-risk paper book (+ $25k cash margin reserve) maps factor composite × IV Rank to credit spreads. See `OPTIONS_SLEEVE.md`. Live account/positions come from **Alpaca paper** (`modules/alpaca_client.py`, `ALPACA.md`). IV Rank history bootstraps from ThetaData free EOD via `run_iv_bootstrap.py` (no demo IVR).
+A practical guide to the long-only ETF factor book: what it predicts, how it sizes positions, how it executes, and how we judge whether it works.
+
+**Allocator one-pager:** [`EXECUTIVE_SUMMARY.md`](EXECUTIVE_SUMMARY.md).
+
+**Audience:** Someone who knows Black–Scholes, linear algebra, and multivariate calculus, but may not live in factor investing, Kalman filters, or options volatility every day. Companion docs: [`OPTIONS_BOOK.md`](OPTIONS_BOOK.md) (options / vol sleeve), [`PAPER_PORTFOLIO.md`](PAPER_PORTFOLIO.md) (DCA + tax ledger), [`ALPACA.md`](ALPACA.md) (paper brokerage).
 
 ---
 
-## 📂 Module Breakdown
+## 1. What this system is trying to do
 
-This quantitative model projects 3-month forward excess returns for a universe of sector ETFs using a multi-factor framework. Below is a guide to the codebase architecture:
+Think of the ETF model as a **forecasting and portfolio construction engine**, not a day trader.
 
-* **`main.py`**  
-  * *What it does:* The core execution engine. It coordinates data ingestion, runs dynamic beta estimation, computes expected factor premiums, outputs the final ranked list of long-only index weights, and then advances the paper portfolio ledger.
-* **`modules/paper_portfolio.py`**  
-  * *What it does:* Weekly dollar-cost-averaging and tax-aware ledger. It publishes a summary into the `paper_portfolio` Supabase table. Create that table with `supabase_paper_portfolio.sql`. Each run currently starts from a fresh ledger; lasting lot history needs the prior lots loaded before `process_week`.
-* **`config.py`**  
-  * *What it does:* The central configuration file. It stores global parameters such as your target ETF universe, lookback window lengths, and model factor selections (e.g., the Fama-French 5-factor + Carhart momentum model).
-* **`backtest_engine.py`**  
-  * *What it does:* The historical simulation framework. It tests how the quantitative model would have performed in past market periods, allowing you to evaluate strategy performance and drawdown characteristics safely out-of-sample.
-* **`run_walkforward_backtest.py`**  
-  * *What it does:* Implements a walk-forward optimization and testing loop. Instead of looking at a static historical window, it repeatedly trains the model on past data and tests it on subsequent unseen periods to prevent data snooping and overfitting.
-* **`modules/data_ingestion.py`**  
-  * *What it does:* Handles the retrieval and formatting of raw data. It pulls daily ETF historical prices via the Alpaca API and fetches macro risk factors (like market premium, size, value, and momentum) using factor libraries.
-* **`modules/dynamic_beta_estimator.py`**  
-  * *What it does:* The econometric heart of the model. It uses Ridge Regression (L2 regularization) to fix multicollinearity issues among sector ETFs and seeds a regularized Kalman Filter to track time-varying, adaptive factor sensitivities (betas) daily.
-* **`modules/factor_model.py`**  
-  * *What it does:* Manages multi-factor calculations, compounding daily factor premiums into 3-month rolling horizons to match your specific holding period without violating temporal independence assumptions.
-* **`modules/portfolio_optimizer.py`**  
-  * *What it does:* Applies constraints to translate raw model predictions into a tradeable portfolio. It enforces a strict long-only indexing framework, screens RMW drag and high volatility, and sizes weights with max-Sharpe subject to single-name and category caps.
-* **`modules/paper_portfolio.py`**  
-  * *What it does:* Advances the weekly paper ledger: DCA into the target weights, a parallel VOO sleeve, and tax-loss harvests that rotate into the closest same-category beta peer that is not wash-sale restricted.
-* **`modules/utils.py`**  
-  * *What it does:* Contains helper functions and shared utilities used across the pipeline to handle date formatting, data alignments, and logging.
+1. **Estimate** how sensitive each ETF is to a small set of systematic risk factors (market, size, value, profitability, investment, momentum).
+2. **Forecast** those factor premiums over the next **~3 months**.
+3. **Score** each ETF: expected return ≈ (factor exposures × forecasted premiums) + a shrunk residual (“alpha”).
+4. **Optimize** a long-only portfolio (max Sharpe) with concentration caps.
+5. **Execute** via a paper ledger: weekly DCA into target weights, with tax-aware exits, plus a separate options sleeve that *does not* short the ETF book.
+
+Capital design for the full Quirk Macro paper book (**$100k**):
+
+| Sleeve | Capital | Job |
+|---|---|---|
+| ETF factor book | $50k | Long-only multi-factor ETF portfolio, DCA’d over 13 weeks |
+| Options / vol | $25k | Defined-risk short premium / modest long extension |
+| Cash / margin reserve | $25k | Yield parking + options stress buffer |
+
+The ETF sleeve never funds options margin. Options never change the long-only MVO constraints.
+
+---
+
+## 2. Intuition: factors before Kalman
+
+### 2.1 Why factors at all?
+
+A single ETF’s return can be written, roughly, as:
+
+\[
+R_i - R_f \approx \alpha_i + \beta_{i,\text{Mkt}}\,f_{\text{Mkt}} + \beta_{i,\text{SMB}}\,f_{\text{SMB}} + \cdots + \varepsilon_i
+\]
+
+If you believe the \(f\)’s (factor premiums) are somewhat predictable over a 3-month horizon, and you can estimate the \(\beta\)’s, you can rank ETFs by expected excess return without forecasting every ticker in isolation.
+
+### 2.2 Fama–French 5 + Carhart (what each letter means)
+
+We use Ken French’s monthly research factors (`modules/data_ingestion.py`):
+
+| Factor | Code | Plain-English meaning |
+|---|---|---|
+| Market excess | `Mkt_RF` | Equity market return minus the risk-free rate |
+| Size | `SMB` | Small stocks minus big stocks (“Small Minus Big”) |
+| Value | `HML` | Cheap (high book-to-market) minus expensive (“High Minus Low”) |
+| Profitability | `RMW` | Robust operating profitability minus weak (“Robust Minus Weak”) |
+| Investment | `CMA` | Conservative asset growth minus aggressive (“Conservative Minus Aggressive”) |
+| Momentum | `WML` | Recent winners minus losers (“Winners Minus Losers”; Carhart) |
+
+**Mental model:** these are *long–short research portfolios*, not products you buy. An ETF’s **beta** to `HML` answers: “When value stocks outperform growth, how much does this ETF tend to move with that spread?”
+
+Config tilts (`FACTOR_TILTS` in `config.py`) deliberately overweight value (`HML`), investment (`CMA`), and momentum (`WML`) in the scoring step when those premiums are in the forecast.
+
+### 2.3 Alpha (the leftover)
+
+\(\alpha_i\) is whatever average excess return is **not** explained by the six factors. In live scoring we **shrink** it toward the cross-sectional mean (`ALPHA_SHRINKAGE_WEIGHT = 0.75`) so one noisy residual does not dominate the portfolio.
+
+---
+
+## 3. Dynamic betas: Ridge seed + Kalman filter
+
+Static OLS betas assume exposures are constant. Sector and style exposures drift. We estimate a **time-varying** state vector
+
+\[
+\theta_t = (\alpha_t,\ \beta_{\text{Mkt},t},\ \beta_{\text{SMB},t},\ \beta_{\text{HML},t},\ \beta_{\text{RMW},t},\ \beta_{\text{CMA},t},\ \beta_{\text{WML},t})^\top
+\]
+
+in `modules/dynamic_beta_estimator.py`.
+
+### 3.1 Kalman filter in one paragraph
+
+A Kalman filter is a recursive estimator for a hidden state that evolves slowly and is observed noisily.
+
+- **State equation (how betas wander):** \(\theta_t = \theta_{t-1} + w_t\) with tiny process noise (we use a random-walk transition).
+- **Observation equation (what we see):** \(R_{i,t}-R_{f,t} = x_t^\top \theta_t + v_t\), where \(x_t\) stacks \(1\) and the six factor returns that month.
+
+Each month the filter **predicts** the next state, then **updates** using the new residual. If you know the Kalman gain from a filtering course: when observation noise is large relative to process noise, betas move slowly (our setting).
+
+### 3.2 Why Ridge first?
+
+Factor returns are correlated. Plain OLS on a short window can explode coefficients (multicollinearity). We:
+
+1. Fit **RidgeCV** on the first ~12 months (L2 penalty chosen by cross-validation).
+2. Use that coefficient vector as the Kalman **initial state**.
+
+Ridge is the usual \(\ell_2\)-regularized least squares: \(\min_\beta \|y-X\beta\|^2 + \lambda\|\beta\|^2\). It shrinks collinear directions without dropping factors.
+
+### 3.3 What the live score uses
+
+For each ETF we take a short exponentially weighted average of the **latest** Kalman states (last three months, EWM), then compute:
+
+\[
+\mathbb{E}[R_i]_{3\text{m}} \approx \underbrace{\beta_i^\top (\text{tilted factor forecasts})}_{\text{factor piece}} + \underbrace{\text{shrunk }\alpha_i}_{\text{residual piece}}
+\]
+
+That is `Total_Expected_Return_3M` in `modules/fund_scorer.py`.
+
+---
+
+## 4. Forecasting factor premiums
+
+`modules/factor_forecaster.py` trains a **LightGBM** multi-output regressor:
+
+- **Targets:** compounded forward 3-month returns of each factor.
+- **Features:** lagged factor returns, short rolling means, and lagged macro series from FRED (yield curve, credit spreads, CPI, VIX, USD, oil, etc.), plus a few interaction terms (e.g. stagflation-style CPI × curve).
+
+At each weekly production run we fit on history available through “now” and predict the latest feature row. This is a supervised ML forecast of *factor* returns, not of individual ETFs.
+
+---
+
+## 5. Portfolio construction (long-only MVO)
+
+`modules/portfolio_optimizer.py` turns scores into weights.
+
+**Screens before optimization**
+
+- Drop names where profitability beta × forecasted `RMW` is a drag.
+- Cap extreme 3-month volatility unless expected return / vol clears an exception.
+
+**Objective**
+
+- Maximize a Sharpe-like objective over a candidate pool (~40 names), using Ledoit–Wolf shrunk covariance on monthly returns scaled to the 3-month horizon.
+- Extra tilt in the objective toward positive `HML` / `CMA` exposure when those premiums are forecast positive.
+
+**Hard constraints** (`config.py`)
+
+| Constraint | Value | Why |
+|---|---|---|
+| Long-only | weights ≥ 0 | No short ETF book |
+| Single-name cap | 12% | Avoid one-ticker concentration |
+| Category cap | 30% | Avoid stacking near-substitutes in one sleeve |
+| Min weight kept | 1% | Drop dust after optimize |
+| Soft max names | 15 | Endogenous holdings count, not a forced N |
+
+Output: `Target_Weight` vector consumed by the paper DCA / Alpaca equity propose path.
+
+---
+
+## 6. Universe
+
+`ETF_CATEGORIES` in `config.py` holds **~286 ETFs across 21 sleeves** (core, mid/small, growth/value, sectors, alts, fixed income, international, etc.). Category labels also drive:
+
+- portfolio category caps, and
+- tax-loss harvest **substitutes** (closest same-sleeve peer in beta space).
+
+---
+
+## 7. Execution & operating cadence
+
+### 7.1 Weekly production path
+
+```text
+fetch prices + Ken French factors + FRED macro
+        ↓
+Kalman betas per ETF
+        ↓
+LightGBM 3M factor forecasts
+        ↓
+score ETFs → long-only max-Sharpe weights
+        ↓
+export factor_predictions (+ options composites) to Supabase
+        ↓
+paper portfolio step (DCA / TLH summary)
+```
+
+Entry point: `main.py`. Scheduled by `.github/workflows/weekly_run.yml` (Sundays 13:00 UTC / 9:00 AM Eastern when on EDT).
+
+### 7.2 Paper ETF ledger (summary)
+
+See [`PAPER_PORTFOLIO.md`](PAPER_PORTFOLIO.md) for full rules. Short version:
+
+- Deploy ~$3,846/week (`$50k ÷ 13`) into model weights and the same into **VOO** (benchmark sleeve).
+- 91-day minimum hold; HIFO / least-gain lot selection; 30-day wash-sale window.
+- Harvest rotations prefer the nearest same-category peer in 6-factor beta Euclidean distance.
+- Alpaca paper places **equity buys**; HIFO/TLH sells are still ledger-side (see `ALPACA.md`).
+
+### 7.3 Options sleeve (separate)
+
+Factor scores for Phase 1 optionable ETFs are z-scored into an **options composite** and combined with **IV Rank** to choose credit structures. Full narrative: [`OPTIONS_BOOK.md`](OPTIONS_BOOK.md).
+
+---
+
+## 8. How we benchmark / backtest
+
+We do **not** judge the model by a single in-sample fit. Two related engines exist:
+
+### 8.1 Walk-forward backtest (primary research loop)
+
+Script: `run_walkforward_backtest.py` (logic also in `backtest_engine.py`).
+
+**Idea:** At rebalance date \(t\), use **only** data ≤ \(t\) to estimate betas, forecast factors, and build weights. Then hold that portfolio for the next **3 months**, record the realized return, advance \(t\) by 3 months, and repeat. That is the standard defense against look-ahead bias / data snooping.
+
+**Default research window:** roughly `2018-12-31` → `2026-06-30` (configurable).
+
+**Benchmarks compound in parallel on the same holding windows:**
+
+| Benchmark | Role |
+|---|---|
+| **VTI** | Broad US total market |
+| **SPY** | Large-cap S&P 500 |
+| **VGT** | Tech-heavy growth sleeve (style stress test) |
+
+**Reported metrics**
+
+- Ending wealth vs start capital
+- Total return over the test span
+- Annualized volatility of the 3-month period returns
+- Annualized Sharpe of those period returns (rf assumed ~3% unless overridden)
+
+Run locally:
+
+```bash
+PYTHONPATH=. python3 run_walkforward_backtest.py
+```
+
+### 8.2 Live / paper benchmarks
+
+On the Quirk Macro Factor tab / paper ledger:
+
+- Factor strategy cumulative return & value vs cost basis
+- Parallel **VOO DCA** sleeve (same weekly dollars, buy-and-hold — no TLH)
+- Tax ledger (realized / unrealized)
+- Options sleeve P&amp;L is tracked separately and must not raid ETF capital
+
+### 8.3 What “good” means (honest criteria)
+
+Prefer comparing **risk-adjusted** outcomes (Sharpe, drawdown behavior) and **implementation realism** (turnover, wash-sale friction, concentration) against VTI/SPY/VOO — not raw return alone. A model that beats SPY only by taking much more concentrated risk is not automatically a win.
+
+---
+
+## 9. Code map (ETF path)
+
+| Path | Role |
+|---|---|
+| `main.py` | Weekly orchestration + Supabase export + paper step |
+| `config.py` | Universe, tilts, MVO caps, paper/options constants |
+| `modules/data_ingestion.py` | ETF returns, Ken French factors, FRED macro |
+| `modules/dynamic_beta_estimator.py` | Ridge-seeded Kalman betas |
+| `modules/factor_forecaster.py` | LightGBM 3M factor forecasts |
+| `modules/fund_scorer.py` | \(\beta^\top f +\) shrunk \(\alpha\) |
+| `modules/portfolio_optimizer.py` | Screens + long-only max-Sharpe |
+| `modules/paper_portfolio.py` | DCA / HIFO / TLH ledger |
+| `modules/etf_orders.py` | Alpaca equity buy proposals |
+| `modules/supabase_exporter.py` | Persist predictions / weights |
+| `backtest_engine.py` / `run_walkforward_backtest.py` | Historical walk-forward |
+| `.github/workflows/weekly_run.yml` | Scheduled production run |
+
+---
+
+## 10. Quick start
+
+```bash
+# Weekly production (needs SUPABASE_* and market data access)
+python main.py
+
+# Research backtest
+PYTHONPATH=. python3 run_walkforward_backtest.py
+
+# Unit tests (paper HIFO / DCA helpers, IV math when present)
+PYTHONPATH=. python3 -m pytest tests/ -q
+```
+
+Secrets used by various paths (never commit values): `SUPABASE_URL`, `SUPABASE_KEY`, Alpaca paper keys (`ALPACA.md`), and for IV history `THETADATA_API_KEY` (`OPTIONS_BOOK.md`).

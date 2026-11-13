@@ -323,7 +323,7 @@ Also add BACKTEST_PERIODS.md (and optional config dict) with the period menu fro
 |---|---|---|---|
 | #1 Walk-forward weights | Wave A | cursor/walkforward-weights-c180 | done (PR) |
 | #2 Ledger persistence | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
-| #3 Kill-switch policy | | | |
+| #3 Kill-switch policy | Wave C | cursor/wave-c-risk-policy-c180 | done (PR) |
 | #4 Costs | | | |
 | #5 Reconcile | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #6 TLH sells | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |

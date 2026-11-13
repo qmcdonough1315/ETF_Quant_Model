@@ -13,6 +13,21 @@ except Exception:  # pragma: no cover - optional until module is synced
     run_paper_portfolio_step = None
 
 
+def _load_wash_restricted_tickers() -> list[str]:
+    """Active wash-sale bans from persisted ledger (empty if DB missing)."""
+    try:
+        from modules.paper_ledger_store import (
+            active_wash_restricted_tickers,
+            load_ledger_from_supabase,
+        )
+
+        ledger, _run_count = load_ledger_from_supabase()
+        return active_wash_restricted_tickers(ledger.wash)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  • wash-sale load skipped: {exc}")
+        return []
+
+
 def main():
     print(f"Initializing Quantitative Pipeline ({config.FORECAST_HORIZON_MONTHS}-Month Horizon)...")
 
@@ -34,8 +49,9 @@ def main():
         print(f"  • {factor:8s}: {ret * 100:+.2f}%")
 
     # --- TAX-LOSS HARVESTING / WASH-SALE RESTRICTIONS ---
-    # Populated by the paper ledger once lot history is persisted in Supabase.
-    recent_wash_sales = []
+    recent_wash_sales = _load_wash_restricted_tickers()
+    if recent_wash_sales:
+        print(f"  • Wash-sale restricted: {', '.join(recent_wash_sales)}")
 
     # 4. Score funds and size via long-only max-Sharpe MVO
     #    (single-name + category caps; holdings count is endogenous)
@@ -76,7 +92,7 @@ def main():
         options_composites=options_composites,
     )
 
-    # 5. Paper DCA + tax-aware ledger (summary export; full history replayed on site).
+    # 5. Paper DCA + tax-aware ledger (load/save lots; propose TLH sells).
     #    A price-feed failure must not fail the weekly factor export above.
     if run_paper_portfolio_step is not None and not top_picks.empty:
         print("--- PAPER PORTFOLIO STEP ---")
@@ -89,6 +105,7 @@ def main():
             print(f"  • Strategy value : ${summary.get('strategy_value', 0):,.2f}")
             print(f"  • VOO value      : ${summary.get('voo_value', 0):,.2f}")
             print(f"  • Net taxable    : ${summary.get('net_taxable', 0):,.2f}")
+            print(f"  • Run count      : {summary.get('run_count', 0)}")
 
 
 if __name__ == "__main__":

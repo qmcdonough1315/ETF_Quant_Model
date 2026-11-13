@@ -12,6 +12,8 @@ Quirk Macro uses **Alpaca paper** (`https://paper-api.alpaca.markets`) as the li
 
 Aliases `APCA_API_KEY_ID` / `APCA_API_SECRET_KEY` / `APCA_API_BASE_URL` are also accepted.
 
+**GitHub Actions** (`.github/workflows/weekly_run.yml`) must expose the canonical names above. Legacy repo secrets `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` are mapped into `ALPACA_API_KEY_ID` / `ALPACA_API_SECRET_KEY` when the canonical names are empty. A presence-only check fails the job if Supabase or Alpaca credentials are missing (values are never printed).
+
 ## Code
 
 - Python: `modules/alpaca_client.py` — account, positions, option contracts, `place_mleg_order`
@@ -27,4 +29,5 @@ Aliases `APCA_API_KEY_ID` / `APCA_API_SECRET_KEY` / `APCA_API_BASE_URL` are also
 
 1. **Done:** Options Book + Summary read Alpaca paper account/positions when secrets are present.
 2. **Done:** Propose/place defined-risk option orders from the factor×IVR signal engine (Options Book paper trade desk).
-3. **Done (buys):** Drive weekly ETF DCA fills through Alpaca paper equity orders (`modules/etf_orders.py` + `place_equity_order`). HIFO/TLH sell path stays in the paper ledger; fills map to lots via `lot_from_alpaca_fill`. VOO sleeve optional on propose. Sells / full TLH broker execution are still ledger-side.
+3. **Done (buys):** Drive weekly ETF DCA fills through Alpaca paper equity orders (`modules/etf_orders.py` + `place_equity_order`). Fills map to lots via `lot_from_alpaca_fill`. VOO sleeve optional on propose.
+4. **Done (sell propose):** HIFO/TLH harvests emit paper equity **sell proposals** (`propose_tlh_sells`). Default is desk confirm; `PAPER_AUTO_PLACE_SELLS` enables paper auto-place only. `place_equity_order` accepts `side=sell` with `qty` on paper.

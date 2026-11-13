@@ -269,6 +269,11 @@ PYTHONPATH=. python3 run_walkforward_backtest.py --smoke   # fast end-to-end on 
 
 # Unit tests (paper HIFO / DCA helpers, IV math when present)
 PYTHONPATH=. python3 -m pytest tests/ -q
+
+# Paper book reconcile (model ↔ Supabase ↔ Alpaca)
+PYTHONPATH=. python3 scripts/reconcile_paper_book.py
 ```
+
+Paper ledger continuity SQL: `supabase_paper_ledger_continuity.sql` (Wave B).
 
 Secrets used by various paths (never commit values): `SUPABASE_URL`, `SUPABASE_KEY`, Alpaca paper keys (`ALPACA.md`), and for IV history `THETADATA_API_KEY` (`OPTIONS_BOOK.md`).

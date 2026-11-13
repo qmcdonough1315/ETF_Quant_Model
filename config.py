@@ -218,6 +218,11 @@ MIN_HOLD_DAYS = 91
 LONG_TERM_DAYS = 365
 WASH_SALE_DAYS = 30
 STRATEGY_INCEPTION_DATE = "2026-09-20"
+# Wave B (#6): propose TLH/HIFO equity sells by default; set True only for paper auto-place.
+PAPER_AUTO_PLACE_SELLS = False
+# Reconcile drift thresholds (#5)
+RECONCILE_WEIGHT_DRIFT_ABS = 0.02  # 2pp vs model target weight
+RECONCILE_SHARE_DRIFT_PCT = 0.05  # 5% vs paper-lot shares
 
 # Paper options / vol sleeve (separate from the long-only ETF book)
 OPTIONS_PAPER_CAPITAL_USD = 25_000.0

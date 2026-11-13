@@ -523,9 +523,13 @@ def process_week(
     target_weights: Dict[str, float],
     ledger: Optional[Ledger] = None,
     betas: Optional[Dict[str, np.ndarray]] = None,
+    *,
+    run_count: int = 1,
 ) -> Tuple[Ledger, dict]:
     """Advance the ledger through one model run / fill cycle."""
     ledger = ledger or Ledger()
+    # Clear per-week trade tape so callers can propose broker sells for this cycle only.
+    ledger.trades = []
     run_ts = pd.Timestamp(run_date).normalize()
     fill_ts = _next_business_day(run_ts)
 
@@ -558,7 +562,9 @@ def process_week(
 
     _evaluate_exits(ledger, fill_ts, weights, opens, betas)
     _deploy(ledger, run_ts, fill_ts, weights, opens)
-    summary = _summary(ledger, fill_ts, opens, run_count=1)  # caller aggregates run_count
+    summary = _summary(ledger, fill_ts, opens, run_count=max(1, int(run_count)))
+    summary["fill_date"] = fill_ts.strftime("%Y-%m-%d")
+    summary["run_count"] = int(run_count)
     return ledger, summary
 
 
@@ -597,8 +603,11 @@ def run_paper_portfolio_step(
     run_date: Optional[str] = None,
     beta_profiles: Optional[dict] = None,
     ledger: Optional[Ledger] = None,
+    *,
+    persist: bool = True,
+    propose_sells: bool = True,
 ) -> dict:
-    """Convenience entrypoint for main.py."""
+    """Convenience entrypoint for main.py with optional Supabase continuity."""
     run_date = run_date or datetime.now().strftime("%Y-%m-%d")
     if portfolio_df is None or portfolio_df.empty:
         return {}
@@ -608,9 +617,39 @@ def run_paper_portfolio_step(
         if float(r["Target_Weight"]) > WEIGHT_EPS
     }
     betas = betas_from_profiles(beta_profiles)
-    ledger, summary = process_week(run_date, weights, ledger or Ledger(), betas=betas)
-    # Note: full multi-week continuity requires loading prior lots from Supabase.
-    # The dashboard currently replays full history from factor_predictions.
-    summary["open_factor_lots"] = sum(1 for l in ledger.lots if l.status == "open" and l.strategy == "factor")
+
+    prior_run_count = 0
+    if ledger is None and persist:
+        from modules.paper_ledger_store import load_ledger_from_supabase
+
+        ledger, prior_run_count = load_ledger_from_supabase()
+    ledger = ledger or Ledger()
+    run_count = prior_run_count + 1
+
+    ledger, summary = process_week(
+        run_date, weights, ledger, betas=betas, run_count=run_count
+    )
+    summary["open_factor_lots"] = sum(
+        1 for l in ledger.lots if l.status == "open" and l.strategy == "factor"
+    )
+
+    if propose_sells:
+        from modules.etf_orders import maybe_place_paper_sells, propose_tlh_sells
+
+        sell_proposal = propose_tlh_sells(ledger.trades)
+        summary["sell_proposals"] = sell_proposal
+        place_result = maybe_place_paper_sells(sell_proposal)
+        summary["sell_place_result"] = place_result
+        n_sells = len(sell_proposal.get("sells") or [])
+        print(
+            f"  • TLH/HIFO sell proposals: {n_sells} "
+            f"(auto_place={place_result.get('auto_place')})"
+        )
+
+    if persist:
+        from modules.paper_ledger_store import save_ledger_to_supabase
+
+        save_ledger_to_supabase(ledger, run_count=run_count)
+
     export_paper_summary_to_supabase(run_date, summary)
     return summary

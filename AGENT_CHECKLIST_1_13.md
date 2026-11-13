@@ -322,12 +322,12 @@ Also add BACKTEST_PERIODS.md (and optional config dict) with the period menu fro
 | ID | Owner agent | PR | Status |
 |---|---|---|---|
 | #1 Walk-forward weights | Wave A | cursor/walkforward-weights-c180 | done (PR) |
-| #2 Ledger persistence | | | |
+| #2 Ledger persistence | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #3 Kill-switch policy | | | |
 | #4 Costs | | | |
-| #5 Reconcile | | | |
-| #6 TLH sells | | | |
-| #7 Actions secrets | | | |
+| #5 Reconcile | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
+| #6 TLH sells | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
+| #7 Actions secrets | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #8 IV refresh + XLRE | | | |
 | #9 Desk boundary | | | |
 | #10 Options backtest | | | |

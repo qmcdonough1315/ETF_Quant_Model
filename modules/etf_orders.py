@@ -188,3 +188,115 @@ def lot_from_alpaca_fill(
         "order_id": order_id,
         "reason": reason,
     }
+
+
+@dataclass(frozen=True)
+class EquitySellPayload:
+    symbol: str
+    qty: str
+    side: str = "sell"
+    type: str = "market"
+    time_in_force: str = "day"
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "symbol": self.symbol,
+            "qty": self.qty,
+            "side": self.side,
+            "type": self.type,
+            "time_in_force": self.time_in_force,
+        }
+
+
+def build_equity_sell_payload(ticker: str, qty: float) -> EquitySellPayload:
+    q = float(qty)
+    if q <= 0:
+        raise ValueError("qty must be positive")
+    symbol = ticker.strip().upper()
+    if not symbol:
+        raise ValueError("ticker required")
+    # Alpaca accepts fractional qty strings.
+    qty_str = f"{q:.6f}".rstrip("0").rstrip(".")
+    return EquitySellPayload(symbol=symbol, qty=qty_str)
+
+
+def propose_tlh_sells(trades: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """
+    Build paper equity sell proposals from ledger trade tape (this week only).
+
+    Design: propose-and-confirm by default. Auto-place only when
+    config.PAPER_AUTO_PLACE_SELLS is True and confirm=True is passed downstream.
+    """
+    sells: list[dict[str, Any]] = []
+    for trade in trades or []:
+        if str(trade.get("side") or "").lower() != "sell":
+            continue
+        if str(trade.get("strategy") or "factor").lower() == "voo":
+            # VOO sleeve is buy-and-hold; ignore accidental sells.
+            continue
+        ticker = str(trade.get("ticker") or "").upper()
+        try:
+            shares = float(trade.get("shares") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if not ticker or shares <= 0:
+            continue
+        payload = build_equity_sell_payload(ticker, shares)
+        sells.append(
+            {
+                "ticker": ticker,
+                "shares": shares,
+                "price": trade.get("price"),
+                "reason": trade.get("reason"),
+                "lot_id": trade.get("lot_id"),
+                "date": trade.get("date"),
+                "order": payload.to_dict(),
+            }
+        )
+    return {
+        "mode": "propose_and_confirm",
+        "auto_place_config": bool(getattr(config, "PAPER_AUTO_PLACE_SELLS", False)),
+        "sells": sells,
+        "count": len(sells),
+        "notes": (
+            "Desk checklist: review wash-sale peers, confirm paper-api base URL, "
+            "then place with confirm=True only on paper."
+        ),
+    }
+
+
+def maybe_place_paper_sells(
+    sell_proposal: Mapping[str, Any],
+    *,
+    confirm: bool = True,
+) -> dict[str, Any]:
+    """
+    Place proposed equity sells on Alpaca paper only when PAPER_AUTO_PLACE_SELLS is True.
+    Otherwise return the proposal unchanged (HITL).
+    """
+    auto = bool(getattr(config, "PAPER_AUTO_PLACE_SELLS", False))
+    sells = list(sell_proposal.get("sells") or [])
+    if not auto:
+        return {
+            "auto_place": False,
+            "placed": [],
+            "skipped": len(sells),
+            "reason": "PAPER_AUTO_PLACE_SELLS is False — propose only",
+        }
+    from modules.alpaca_client import place_equity_order
+
+    placed: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for item in sells:
+        order = dict(item.get("order") or {})
+        try:
+            resp = place_equity_order(order, confirm=confirm)
+            placed.append({"ticker": item.get("ticker"), "response": resp})
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{item.get('ticker')}: {exc}")
+    return {
+        "auto_place": True,
+        "placed": placed,
+        "errors": errors,
+        "skipped": 0,
+    }

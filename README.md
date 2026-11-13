@@ -2,7 +2,8 @@
 
 A practical guide to the long-only ETF factor book: what it predicts, how it sizes positions, how it executes, and how we judge whether it works.
 
-**Allocator one-pager:** [`EXECUTIVE_SUMMARY.md`](EXECUTIVE_SUMMARY.md).
+**Allocator one-pager:** [`EXECUTIVE_SUMMARY.md`](EXECUTIVE_SUMMARY.md).  
+**Next build wave (Cloud Agent prompts #1–#13):** [`AGENT_CHECKLIST_1_13.md`](AGENT_CHECKLIST_1_13.md).
 
 **Audience:** Someone who knows Black–Scholes, linear algebra, and multivariate calculus, but may not live in factor investing, Kalman filters, or options volatility every day. Companion docs: [`OPTIONS_BOOK.md`](OPTIONS_BOOK.md) (options / vol sleeve), [`PAPER_PORTFOLIO.md`](PAPER_PORTFOLIO.md) (DCA + tax ledger), [`ALPACA.md`](ALPACA.md) (paper brokerage).
 

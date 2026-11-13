@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -25,6 +26,21 @@ MIN_DTE = 20
 STRIKE_RANGE = 3  # strikes above/below spot + ATM
 REQUEST_PAUSE_SEC = 3.2  # stay under free-tier ~20 req/min
 DEFAULT_RATE = 0.0
+ET = ZoneInfo("America/New_York")
+
+
+def last_settled_eod_date(as_of: Optional[datetime] = None) -> date:
+    """
+    Free-tier EOD is delayed ~1 day and rejects current-day pulls with expiration='*'.
+    Use ET calendar and stay at least 2 calendar days behind 'now' for safety.
+    """
+    now = as_of or datetime.now(ET)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=ET)
+    else:
+        now = now.astimezone(ET)
+    return (now - timedelta(days=2)).date()
+
 
 
 @dataclass(frozen=True)
@@ -318,8 +334,12 @@ def rows_to_frame(rows: Iterable[AtmIvRow]) -> pd.DataFrame:
 
 
 def default_history_window(as_of: Optional[date] = None) -> tuple[date, date]:
-    """Free tier: ~1y history, EOD delayed 1 day."""
-    end = as_of or (datetime.now(timezone.utc).date() - timedelta(days=1))
+    """Free tier: ~1y history, EOD delayed; never include the current ET session day."""
+    end = as_of or last_settled_eod_date()
+    # Guard against accidental current-day / same-day windows.
+    settled = last_settled_eod_date()
+    if end > settled:
+        end = settled
     start = end - timedelta(days=365)
     # Free access table cites 2023-06-01 as first date; clamp defensively.
     floor = date(2023, 6, 1)

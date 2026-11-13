@@ -93,12 +93,14 @@ Requires `THETADATA_API_KEY`, and `SUPABASE_URL` / `SUPABASE_KEY` for upsert. On
 **Production refresh (Wave E / #8):**
 
 ```bash
-# Append last ~7 settled EOD days (weekly Actions step when THETADATA_API_KEY is set)
-PYTHONPATH=. python3 scripts/refresh_option_iv_history.py --days 7
+# Append recent settled EOD days (weekday open/noon IV-only workflow + Sunday weekly step)
+PYTHONPATH=. python3 scripts/refresh_option_iv_history.py --days 5
 
 # Coverage + XLRE gaps vs SPY (optional --backfill-xlre)
 PYTHONPATH=. python3 scripts/report_iv_coverage.py
 ```
+
+Workflow: `.github/workflows/iv_refresh.yml` — **IV only** (no `main.py`, no paper DCA, no composite republish). ThetaData free tier is delayed settled EOD, not a live open/noon print.
 
 Missing IVR → `skip_missing_iv` (fail closed) in `build_signal` / propose path — never invent a rank.
 

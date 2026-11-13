@@ -1,0 +1,69 @@
+name: Option IV history refresh (weekday)
+
+# IV-only job — does NOT run main.py, paper DCA, or factor composites.
+# ThetaData free-tier EOD is delayed (~last settled session), so these runs
+# append recent settled ATM IV into option_iv_history (no demo IV). They are
+# not live open/noon prints until a same-day snapshot source is wired.
+
+on:
+  schedule:
+    # Weekdays only. GitHub cron is UTC — times approximate America/New_York:
+    #   ~09:35 ET open  → 14:35 UTC (EST) / 13:35 UTC (EDT)
+    #   ~12:05 ET noon  → 17:05 UTC (EST) / 16:05 UTC (EDT)
+    # We fire both seasonal slots so at least one lands near open and noon.
+    - cron: '35 13 * * 1-5'   # ~09:35 EDT open
+    - cron: '35 14 * * 1-5'   # ~09:35 EST open
+    - cron: '5 16 * * 1-5'    # ~12:05 EDT noon
+    - cron: '5 17 * * 1-5'    # ~12:05 EST noon
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Lookback calendar days for ThetaData append'
+        required: false
+        default: '5'
+
+concurrency:
+  group: iv-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh-iv:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Assert Supabase secrets present (values never printed)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          missing = [k for k in ("SUPABASE_URL", "SUPABASE_KEY") if not (os.environ.get(k) or "").strip()]
+          if missing:
+              print("Missing required secrets:", ", ".join(missing))
+              sys.exit(1)
+          print("Supabase secret presence OK (values not shown)")
+          PY
+
+      - name: Refresh option_iv_history (ThetaData EOD append)
+        env:
+          THETADATA_API_KEY: ${{ secrets.THETADATA_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DAYS: ${{ github.event.inputs.days || '5' }}
+        run: |
+          if [ -z "${THETADATA_API_KEY:-}" ]; then
+            echo "THETADATA_API_KEY not set — skipping IV refresh (no demo IV invented)."
+            exit 0
+          fi
+          python -m pip install --upgrade pip
+          pip install thetadata python-dotenv pandas numpy supabase
+          echo "IV-only refresh: days=${DAYS} (no main.py / no paper ledger)"
+          PYTHONPATH=. python3 scripts/refresh_option_iv_history.py --days "${DAYS}"

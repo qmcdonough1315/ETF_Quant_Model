@@ -272,8 +272,8 @@ PYTHONPATH=. python3 run_walkforward_backtest.py --smoke   # fast end-to-end on 
 # Options sleeve research backtest (real IV history only)
 PYTHONPATH=. python3 run_options_sleeve_backtest.py --from-supabase
 
-# IV refresh / coverage (Wave E)
-PYTHONPATH=. python3 scripts/refresh_option_iv_history.py --days 7
+# IV refresh / coverage (Wave E) — also weekday open/noon via .github/workflows/iv_refresh.yml
+PYTHONPATH=. python3 scripts/refresh_option_iv_history.py --days 5
 PYTHONPATH=. python3 scripts/report_iv_coverage.py
 
 # Options HITL signal board (never places)

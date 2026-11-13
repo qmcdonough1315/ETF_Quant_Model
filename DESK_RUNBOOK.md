@@ -12,7 +12,7 @@ Related: [`OPTIONS_BOOK.md`](OPTIONS_BOOK.md) · [`OPTIONS_RISK_OPS.md`](OPTIONS
 | Step | Owner | Automation? |
 |---|---|---|
 | Weekly factor model + composites → Supabase | `main.py` / Actions | Yes |
-| Refresh ATM IV → `option_iv_history` | Actions IV step / `scripts/refresh_option_iv_history.py` | Yes (append only; no invent) |
+| Refresh ATM IV → `option_iv_history` | Weekday open/noon IV-only workflow + Sunday weekly step / `scripts/refresh_option_iv_history.py` | Yes (append settled EOD only; no invent; **not** `main.py`) |
 | Read IVR + composites → structure map | Desk / `scripts/propose_options_paper.py` | Assistive board only |
 | Chain pick → credit limit proposal | Options Trade Desk (web) | Human triggers |
 | Place paper mleg | Desk with `confirm=true` | **Never** from `main.py` |
@@ -29,7 +29,7 @@ PYTHONPATH=. python3 scripts/propose_options_paper.py --tickers SPY,QQQ,XLK --ou
 ## Sunday checklist
 
 1. **Kill-switch** — Read [`RISK_POLICY.md`](RISK_POLICY.md). If yellow/red or `QUIRK_KILL_SWITCH=1`, **stop** (no new short premium).
-2. **IV freshness** — Confirm weekly IV refresh ran (or run `scripts/refresh_option_iv_history.py --days 7`). Missing IVR → **skip** that ticker (fail closed).
+2. **IV freshness** — Confirm weekday IV-only job (`.github/workflows/iv_refresh.yml`, ~open + noon ET) and/or Sunday weekly step ran. Manual: `scripts/refresh_option_iv_history.py --days 5`. ThetaData free tier appends **settled EOD** (delayed), not live open prints. Missing IVR → **skip** that ticker (fail closed).
 3. **Composites** — Factor tab / Supabase `options_composite` for Phase 1 names.
 4. **Signal board** — Run `propose_options_paper.py` or open Options Sleeve panel. Q4 / missing IV / kill-switch = skip.
 5. **Ops filters** — Ex-div / pin rules ([`OPTIONS_RISK_OPS.md`](OPTIONS_RISK_OPS.md)); liquidity caps (sector vs SPY/QQQ/IWM).

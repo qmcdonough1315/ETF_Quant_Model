@@ -164,7 +164,8 @@ class ThetaIvBootstrapper:
             from thetadata import ThetaClient
         except ImportError as exc:
             raise RuntimeError(
-                "thetadata package missing. Install with: pip install thetadata"
+                "thetadata import failed. Install deps with: "
+                "pip install thetadata python-dotenv pandas numpy"
             ) from exc
 
         kwargs = {"dataframe_type": "pandas"}

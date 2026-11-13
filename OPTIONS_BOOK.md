@@ -2,6 +2,8 @@
 
 How the $25k defined-risk options sleeve works: signals, structures, IV Rank, execution, and how it relates to the ETF factor model.
 
+**Allocator one-pager:** [`EXECUTIVE_SUMMARY.md`](EXECUTIVE_SUMMARY.md).
+
 **Audience:** Comfortable with Black–Scholes pricing and the idea of \(\Delta\), \(\Theta\), \(\mathcal{V}\) (vega), but not necessarily a full-time vol trader. ETF factor context: [`README.md`](README.md). Ops cheat sheet: [`OPTIONS_SLEEVE.md`](OPTIONS_SLEEVE.md). Broker wiring: [`ALPACA.md`](ALPACA.md).
 
 ---

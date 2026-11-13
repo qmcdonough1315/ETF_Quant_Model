@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -25,6 +26,21 @@ MIN_DTE = 20
 STRIKE_RANGE = 3  # strikes above/below spot + ATM
 REQUEST_PAUSE_SEC = 3.2  # stay under free-tier ~20 req/min
 DEFAULT_RATE = 0.0
+ET = ZoneInfo("America/New_York")
+
+
+def last_settled_eod_date(as_of: Optional[datetime] = None) -> date:
+    """
+    Free-tier EOD is delayed ~1 day and rejects current-day pulls with expiration='*'.
+    Use ET calendar and stay at least 2 calendar days behind 'now' for safety.
+    """
+    now = as_of or datetime.now(ET)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=ET)
+    else:
+        now = now.astimezone(ET)
+    return (now - timedelta(days=2)).date()
+
 
 
 @dataclass(frozen=True)
@@ -161,19 +177,26 @@ class ThetaIvBootstrapper:
         rate: float = DEFAULT_RATE,
     ):
         try:
-            from thetadata import ThetaClient
+            from thetadata import ThetaClient  # noqa: F401
         except ImportError as exc:
             raise RuntimeError(
-                "thetadata package missing. Install with: pip install thetadata"
+                "thetadata import failed. Install deps with: "
+                "pip install thetadata python-dotenv pandas numpy"
             ) from exc
 
-        kwargs = {"dataframe_type": "pandas"}
-        if api_key:
-            kwargs["api_key"] = api_key
-        self.client = ThetaClient(**kwargs)
+        self.api_key = api_key
         self.pause_sec = pause_sec
         self.rate = rate
         self._last_request = 0.0
+        self.client = self._new_client()
+
+    def _new_client(self):
+        from thetadata import ThetaClient
+
+        kwargs = {"dataframe_type": "pandas"}
+        if self.api_key:
+            kwargs["api_key"] = self.api_key
+        return ThetaClient(**kwargs)
 
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request
@@ -181,9 +204,32 @@ class ThetaIvBootstrapper:
             time.sleep(self.pause_sec - elapsed)
         self._last_request = time.monotonic()
 
+    def _is_auth_error(self, exc: BaseException) -> bool:
+        text = str(exc).lower()
+        return "unauthenticated" in text or "invalid session" in text
+
+    def _call(self, fn, *, retries: int = 3):
+        """Run a ThetaData call with throttle + session-reset retries."""
+        last_exc: Optional[BaseException] = None
+        for attempt in range(retries):
+            self._throttle()
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001 - vendor client raises varied types
+                last_exc = exc
+                if self._is_auth_error(exc) and attempt + 1 < retries:
+                    print(f"[iv-bootstrap] session reset (attempt {attempt + 1}); recreating client")
+                    time.sleep(2.0 * (attempt + 1))
+                    self.client = self._new_client()
+                    continue
+                raise
+        assert last_exc is not None
+        raise last_exc
+
     def stock_eod(self, symbol: str, start: date, end: date) -> pd.DataFrame:
-        self._throttle()
-        df = self.client.stock_history_eod(symbol=symbol, start_date=start, end_date=end)
+        df = self._call(
+            lambda: self.client.stock_history_eod(symbol=symbol, start_date=start, end_date=end)
+        )
         if df is None or len(df) == 0:
             return pd.DataFrame()
         out = df.copy()
@@ -198,14 +244,15 @@ class ThetaIvBootstrapper:
         return out.dropna(subset=["as_of_date", "close"])[["as_of_date", "close"]]
 
     def option_eod_chunk(self, symbol: str, start: date, end: date) -> pd.DataFrame:
-        self._throttle()
-        df = self.client.option_history_eod(
-            symbol=symbol,
-            expiration="*",
-            start_date=start,
-            end_date=end,
-            max_dte=MAX_DTE,
-            strike_range=STRIKE_RANGE,
+        df = self._call(
+            lambda: self.client.option_history_eod(
+                symbol=symbol,
+                expiration="*",
+                start_date=start,
+                end_date=end,
+                max_dte=MAX_DTE,
+                strike_range=STRIKE_RANGE,
+            )
         )
         if df is None or len(df) == 0:
             return pd.DataFrame()
@@ -222,13 +269,17 @@ class ThetaIvBootstrapper:
         symbol = symbol.upper()
         spots = self.stock_eod(symbol, start, end)
         if spots.empty:
+            print(f"[iv-bootstrap] {symbol}: no stock EOD in window")
             return []
         spot_map = {r.as_of_date: float(r.close) for r in spots.itertuples(index=False)}
 
         rows: list[AtmIvRow] = []
         cursor = start
+        chunk_i = 0
         while cursor <= end:
             chunk_end = min(cursor + timedelta(days=chunk_days - 1), end)
+            chunk_i += 1
+            print(f"[iv-bootstrap] {symbol}: options chunk {chunk_i} {cursor}→{chunk_end}")
             opt = self.option_eod_chunk(symbol, cursor, chunk_end)
             if not opt.empty:
                 # Attach trade date from `created` (EOD report date).
@@ -283,8 +334,12 @@ def rows_to_frame(rows: Iterable[AtmIvRow]) -> pd.DataFrame:
 
 
 def default_history_window(as_of: Optional[date] = None) -> tuple[date, date]:
-    """Free tier: ~1y history, EOD delayed 1 day."""
-    end = as_of or (datetime.now(timezone.utc).date() - timedelta(days=1))
+    """Free tier: ~1y history, EOD delayed; never include the current ET session day."""
+    end = as_of or last_settled_eod_date()
+    # Guard against accidental current-day / same-day windows.
+    settled = last_settled_eod_date()
+    if end > settled:
+        end = settled
     start = end - timedelta(days=365)
     # Free access table cites 2023-06-01 as first date; clamp defensively.
     floor = date(2023, 6, 1)
@@ -349,13 +404,23 @@ def run_bootstrap(
 
     boot = ThetaIvBootstrapper(api_key=api_key)
     all_rows: list[AtmIvRow] = []
+    out = artifact_path or Path("data/option_iv_history/atm_iv_bootstrap.csv")
     for ticker in tickers:
-        print(f"[iv-bootstrap] {ticker} {s} → {e}")
-        all_rows.extend(boot.bootstrap_symbol(ticker, s, e))
-        print(f"[iv-bootstrap] {ticker}: {sum(1 for r in all_rows if r.ticker == ticker)} days")
+        print(f"[iv-bootstrap] {ticker} {s} → {e}", flush=True)
+        try:
+            symbol_rows = boot.bootstrap_symbol(ticker, s, e)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[iv-bootstrap] {ticker} FAILED: {exc}", flush=True)
+            # Persist progress so a later resume still has completed names.
+            df_partial = rows_to_frame(all_rows)
+            write_artifact(df_partial, out)
+            raise
+        all_rows.extend(symbol_rows)
+        print(f"[iv-bootstrap] {ticker}: {len(symbol_rows)} days", flush=True)
+        # Checkpoint after each ticker.
+        write_artifact(rows_to_frame(all_rows), out)
 
     df = rows_to_frame(all_rows)
-    out = artifact_path or Path("data/option_iv_history/atm_iv_bootstrap.csv")
     write_artifact(df, out)
     print(f"[iv-bootstrap] wrote {len(df)} rows → {out}")
 

@@ -244,7 +244,7 @@ def propose_defined_risk_trade(
     fill_credit_fraction: float = 0.92,
 ) -> TradeProposal | TradeProposalSkip:
     signal = build_signal(ticker, composite_score, iv_rank)
-    if signal.structure == "skip_low_iv":
+    if signal.structure in {"skip_low_iv", "skip_kill_switch"}:
         return TradeProposalSkip(
             ticker=signal.ticker,
             structure=signal.structure,

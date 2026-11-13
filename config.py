@@ -236,6 +236,19 @@ OPTIONS_STOP_MULTIPLE = 2.0
 OPTIONS_MAX_NAME_MARGIN_PCT = 0.02  # of total $100k book
 OPTIONS_MAX_SECTOR_MARGIN_PCT = 0.12  # of options+cash ($50k)
 
+# Wave C joint risk / kill-switch (see RISK_POLICY.md)
+# 50% ETF / 25% options / 25% cash → 15% book DD ≈ 20% on the risk sleeves.
+RISK_COMBINED_DD_YELLOW = 0.10  # halt new short premium; review
+RISK_COMBINED_DD_RED = 0.15  # primary de-risk / kill-switch
+RISK_COMBINED_DD_CATASTROPHIC = 0.25
+RISK_OPTIONS_LOSS_SOFT_USD = -5_000.0  # -20% of $25k options sleeve
+RISK_OPTIONS_LOSS_HARD_USD = -10_000.0  # -40% of $25k
+RISK_CASH_RESERVE_FLOOR_USD = 12_500.0  # 50% of $25k reserve
+RISK_VIX_SOFT_HALT = 30.0
+RISK_VIX_HARD_HALT = 35.0
+RISK_ETF_SLEEVE_REVIEW_DD = 0.15  # review only — do not fight 3M thesis
+RISK_ETF_SLEEVE_TRIM_DD = 0.25
+
 # Macroeconomic Series (FRED Tickers)
 MACRO_FRED_SERIES = {
     "T10Y2Y": "yield_curve_slope",

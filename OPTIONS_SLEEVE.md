@@ -1,6 +1,6 @@
 # Options / Volatility Paper Sleeve (cheat sheet)
 
-Full MBA-friendly narrative: **[`OPTIONS_BOOK.md`](OPTIONS_BOOK.md)**. Broker details: [`ALPACA.md`](ALPACA.md). ETF model: [`README.md`](README.md).
+Full MBA-friendly narrative: **[`OPTIONS_BOOK.md`](OPTIONS_BOOK.md)**. Broker details: [`ALPACA.md`](ALPACA.md). ETF model: [`README.md`](README.md). Kill-switch: [`RISK_POLICY.md`](RISK_POLICY.md).
 
 ## Role
 Express **shorts** and modest **long extension** without changing the long-only ETF MVO. Capital: **$25k** options buying power + **$25k** cash-engine margin reserve.
@@ -22,6 +22,7 @@ Liquid ETF options: SPY, QQQ, IWM, and major sector ETFs (`PHASE1_OPTIONABLE_ETF
 - Per-name margin ≤ 2% of the $100k book; per-sector ≤ 12% of options+cash
 - Options stress must fit inside the $25k cash reserve
 - Never pull capital from the ETF sleeve
+- **Combined NAV drawdown ≥ 15% → kill-switch** (halt new short premium; ≈20% on ETF+options with 25% cash). Soft yellow at 10%. Env override: `QUIRK_KILL_SWITCH=1`
 
 ## IV Rank data (live, no demo)
 - **Definition (v1):** ~30 DTE ATM IV = average of call and put Black–Scholes IVs from mid prices.

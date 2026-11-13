@@ -172,10 +172,10 @@ Item #7: fix GitHub Actions Alpaca env alignment in .github/workflows/weekly_run
 **Problem:** Bootstrap exists; weekly job doesn’t refresh IV; desk must not invent IVR; XLRE may be short history.
 
 **Done when**
-- [ ] Documented/scheduled path to append recent EOD ATM IV (ThetaData and/or Alpaca)
-- [ ] Options signal path **skips** ticker if IVR unavailable (fail closed)
-- [ ] XLRE (and any sparse names) backfill script or one-off agent run logged
-- [ ] `OPTIONS_BOOK.md` ops section updated
+- [x] Documented/scheduled path to append recent EOD ATM IV (ThetaData and/or Alpaca)
+- [x] Options signal path **skips** ticker if IVR unavailable (fail closed)
+- [x] XLRE (and any sparse names) backfill script or one-off agent run logged
+- [x] `OPTIONS_BOOK.md` ops section updated
 
 **Prompt**
 
@@ -192,10 +192,10 @@ Item #8: productionize IV Rank. (1) Fail-closed: build_signal / options_orders s
 **Problem:** Composites export from weekly model; mleg propose/place is desk-driven—boundary unclear.
 
 **Done when**
-- [ ] Explicit choice in docs: human-in-the-loop **or** automated paper propose
-- [ ] If automate: gated by kill-switch (#3), IVR fail-closed (#8), margin caps
-- [ ] If HITL: checklist in OPTIONS_BOOK / desk runbook; `main.py` unchanged but links clear
-- [ ] No silent partial automation
+- [x] Explicit choice in docs: human-in-the-loop **or** automated paper propose
+- [x] If automate: gated by kill-switch (#3), IVR fail-closed (#8), margin caps
+- [x] If HITL: checklist in OPTIONS_BOOK / desk runbook; `main.py` unchanged but links clear
+- [x] No silent partial automation
 
 **Prompt**
 
@@ -233,9 +233,9 @@ Item #10: build a crude but honest point-in-time options sleeve backtest (e.g. r
 **Problem:** Short options on ETFs face early exercise / pin / distribution risk; policy not codified.
 
 **Done when**
-- [ ] `OPTIONS_RISK_OPS.md` or section in OPTIONS_BOOK: no holds into ex-div when short calls; max DTE into pin risk; roll/close rules
-- [ ] Pre-trade checks in `options_orders.py` where data allows (else hard doc + desk checklist)
-- [ ] Kill-switch interaction noted
+- [x] `OPTIONS_RISK_OPS.md` or section in OPTIONS_BOOK: no holds into ex-div when short calls; max DTE into pin risk; roll/close rules
+- [x] Pre-trade checks in `options_orders.py` where data allows (else hard doc + desk checklist)
+- [x] Kill-switch interaction noted
 
 **Prompt**
 
@@ -252,10 +252,10 @@ Item #11: codify assignment/pin/ex-div policy for Phase 1 ETF short premium. Wri
 **Problem:** Margin caps exist; open interest / spread / max contracts by ticker mostly don’t.
 
 **Done when**
-- [ ] Per-ticker max contracts / max % of OI (if OI available) / max bid-ask width filter
-- [ ] SPY/QQQ/IWM looser than thin sector names (config table)
-- [ ] Proposal skips with reason when liquidity fails
-- [ ] Docs updated
+- [x] Per-ticker max contracts / max % of OI (if OI available) / max bid-ask width filter
+- [x] SPY/QQQ/IWM looser than thin sector names (config table)
+- [x] Proposal skips with reason when liquidity fails
+- [x] Docs updated
 
 **Prompt**
 
@@ -272,9 +272,9 @@ Item #12: add liquidity/capacity filters to options proposals. Config table for 
 **Problem:** Thesis mentions under- *and* over-priced IV; code sells rich / skips cheap—does not buy undervalued vol.
 
 **Done when**
-- [ ] EXECUTIVE_SUMMARY + OPTIONS_BOOK state Phase 1 clearly: harvest rich IVR; stand aside when cheap
-- [ ] Optional “Phase 2: long vol when IVR low + …” parked as future work—not implied live
-- [ ] Desk UI copy checked if in quirk_macro_web_dev (only if agent has that repo)
+- [x] EXECUTIVE_SUMMARY + OPTIONS_BOOK state Phase 1 clearly: harvest rich IVR; stand aside when cheap
+- [x] Optional “Phase 2: long vol when IVR low + …” parked as future work—not implied live
+- [x] Desk UI copy checked if in quirk_macro_web_dev (only if agent has that repo)
 
 **Prompt**
 
@@ -328,10 +328,10 @@ Also add BACKTEST_PERIODS.md (and optional config dict) with the period menu fro
 | #5 Reconcile | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #6 TLH sells | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
 | #7 Actions secrets | Wave B | cursor/wave-b-paper-truth-c180 | done (PR) |
-| #8 IV refresh + XLRE | | | |
-| #9 Desk boundary | | | |
+| #8 IV refresh + XLRE | Wave E | cursor/wave-e-options-production-def2 | done (PR) |
+| #9 Desk boundary | Wave E | cursor/wave-e-options-production-def2 | done (PR) |
 | #10 Options backtest | Wave D | cursor/wave-d-costs-options-backtest-def2 | done (PR) |
-| #11 Assignment/ex-div | | | |
-| #12 Liquidity caps | | | |
-| #13 LP language | | | |
+| #11 Assignment/ex-div | Wave E | cursor/wave-e-options-production-def2 | done (PR) |
+| #12 Liquidity caps | Wave E | cursor/wave-e-options-production-def2 | done (PR) |
+| #13 LP language | Wave E | cursor/wave-e-options-production-def2 (+ web) | done (PR) |
 | Periods pack | Wave A | cursor/walkforward-weights-c180 | done (PR) |

@@ -7,6 +7,7 @@ composite score plus IV Rank into defined-risk credit structures.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -17,6 +18,7 @@ Structure = Literal[
     "bear_call_spread",
     "iron_condor",
     "skip_low_iv",
+    "skip_missing_iv",
     "skip_kill_switch",
 ]
 
@@ -25,6 +27,7 @@ Regime = Literal[
     "q2_bearish_vol_seller",
     "q3_neutral_vol",
     "q4_low_iv",
+    "missing_iv",
     "kill_switch",
 ]
 
@@ -63,6 +66,13 @@ def map_structure(regime: Regime) -> tuple[Structure, float, Optional[float], st
             None,
             "Kill-switch active — no new short-premium risk (see RISK_POLICY.md).",
         )
+    if regime == "missing_iv":
+        return (
+            "skip_missing_iv",
+            0.0,
+            None,
+            "IV Rank unavailable — fail closed (no demo / placeholder IVR).",
+        )
     if regime == "q1_bullish_vol_seller":
         return (
             "bull_put_spread",
@@ -88,20 +98,33 @@ def map_structure(regime: Regime) -> tuple[Structure, float, Optional[float], st
         "skip_low_iv",
         0.0,
         None,
-        "IV Rank below gate — do not sell cheap volatility.",
+        "IV Rank below gate — stand aside; Phase 1 does not buy cheap vol.",
     )
+
+
+def _finite_iv_rank(iv_rank: Optional[float]) -> Optional[float]:
+    if iv_rank is None:
+        return None
+    try:
+        v = float(iv_rank)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(v):
+        return None
+    return v
 
 
 def build_signal(
     ticker: str,
     composite_score: float,
-    iv_rank: float,
+    iv_rank: Optional[float],
     *,
     kill_switch_active: Optional[bool] = None,
 ) -> OptionsSignal:
     """
-    Map composite × IVR → structure. If kill_switch_active is None, evaluate
-    env/snapshot via risk_policy (fail closed when yellow/red).
+    Map composite × IVR → structure. Missing/non-finite IVR → skip_missing_iv
+    (fail closed). If kill_switch_active is None, evaluate env/snapshot via
+    risk_policy (fail closed when yellow/red).
     """
     if kill_switch_active is None:
         try:
@@ -111,15 +134,21 @@ def build_signal(
         except Exception:  # noqa: BLE001 — never block on risk module import issues with open risk
             kill_switch_active = False
 
+    ivr = _finite_iv_rank(iv_rank)
     if kill_switch_active:
         regime: Regime = "kill_switch"
+        ivr_out = float(ivr) if ivr is not None else float("nan")
+    elif ivr is None:
+        regime = "missing_iv"
+        ivr_out = float("nan")
     else:
-        regime = classify_regime(composite_score, iv_rank)
+        regime = classify_regime(composite_score, ivr)
+        ivr_out = ivr
     structure, short_delta, wing_delta, rationale = map_structure(regime)
     return OptionsSignal(
         ticker=ticker.upper(),
         composite_score=float(composite_score),
-        iv_rank=float(iv_rank),
+        iv_rank=ivr_out,
         regime=regime,
         structure=structure,
         dte_min=int(getattr(config, "OPTIONS_DTE_MIN", 30)),

@@ -14,20 +14,28 @@ Liquid ETF options: SPY, QQQ, IWM, and major sector ETFs (`PHASE1_OPTIONABLE_ETF
 | Q1 | High composite, IVR ≥ 30% (prefer ≥ 50%) | Bull put spread · ~25Δ · 30–45 DTE |
 | Q2 | Low composite, IVR elevated | Bear call spread · ~25Δ · 30–45 DTE |
 | Q3 | Neutral composite, IVR elevated | Iron condor · ~18Δ wings |
-| Q4 | IVR < 30% | Skip short premium |
+| Q4 | IVR < 30% | Skip short premium (stand aside — do **not** buy cheap vol) |
+| Missing IVR | No history | Fail closed (`skip_missing_iv`) |
+
+**Phase 1:** sell rich IVR credit structures only. **Phase 2** long-vol is docs-only.
 
 ## Risk controls
 - Defined-risk only (no naked shorts in Phase 1)
 - Take profit at 50% of credit; stop at 2× credit
 - Per-name margin ≤ 2% of the $100k book; per-sector ≤ 12% of options+cash
+- Liquidity caps by ticker (tighter on sector SPDRs) — see `OPTIONS_LIQUIDITY_BY_TICKER`
+- Ex-div / pin ops: [`OPTIONS_RISK_OPS.md`](OPTIONS_RISK_OPS.md)
 - Options stress must fit inside the $25k cash reserve
 - Never pull capital from the ETF sleeve
 - **Combined NAV drawdown ≥ 15% → kill-switch** (halt new short premium; ≈20% on ETF+options with 25% cash). Soft yellow at 10%. Env override: `QUIRK_KILL_SWITCH=1`
+- Desk HITL: [`DESK_RUNBOOK.md`](DESK_RUNBOOK.md)
 
 ## IV Rank data (live, no demo)
 - **Definition (v1):** ~30 DTE ATM IV = average of call and put Black–Scholes IVs from mid prices.
 - **Bootstrap:** ThetaData free-tier EOD (`run_iv_bootstrap.py`) → `option_iv_history` (see `supabase_option_iv_history.sql`).
-- **Ongoing:** Alpaca ATM IV snapshots append to the same table (source differs); desk must never invent IVR.
+- **Weekly refresh:** `scripts/refresh_option_iv_history.py` (also scheduled in Actions when `THETADATA_API_KEY` is set).
+- **Coverage / XLRE gaps:** `scripts/report_iv_coverage.py`
+- **Ongoing:** desk must never invent IVR; missing → skip.
 - **Composite:** Cross-sectional z-score of Phase 1 ETF `Total_Expected_Return_3M` exported as `factor_predictions.data_type = options_composite`.
 
 ## Fills / costs

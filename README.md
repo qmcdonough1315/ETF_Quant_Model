@@ -272,6 +272,13 @@ PYTHONPATH=. python3 run_walkforward_backtest.py --smoke   # fast end-to-end on 
 # Options sleeve research backtest (real IV history only)
 PYTHONPATH=. python3 run_options_sleeve_backtest.py --from-supabase
 
+# IV refresh / coverage (Wave E)
+PYTHONPATH=. python3 scripts/refresh_option_iv_history.py --days 7
+PYTHONPATH=. python3 scripts/report_iv_coverage.py
+
+# Options HITL signal board (never places)
+PYTHONPATH=. python3 scripts/propose_options_paper.py
+
 # Unit tests (paper HIFO / DCA helpers, IV math when present)
 PYTHONPATH=. python3 -m pytest tests/ -q
 
@@ -279,6 +286,7 @@ PYTHONPATH=. python3 -m pytest tests/ -q
 PYTHONPATH=. python3 scripts/reconcile_paper_book.py
 ```
 
+Desk / ops: [`DESK_RUNBOOK.md`](DESK_RUNBOOK.md), [`OPTIONS_RISK_OPS.md`](OPTIONS_RISK_OPS.md).  
 Paper ledger continuity SQL: `supabase_paper_ledger_continuity.sql` (Wave B).
 
 Secrets used by various paths (never commit values): `SUPABASE_URL`, `SUPABASE_KEY`, Alpaca paper keys (`ALPACA.md`), and for IV history `THETADATA_API_KEY` (`OPTIONS_BOOK.md`).

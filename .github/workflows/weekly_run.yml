@@ -56,6 +56,21 @@ jobs:
         print("Secret presence OK (values not shown)")
         PY
 
+    # Optional: THETADATA_API_KEY — weekly ATM IV append into option_iv_history (#8).
+    # Soft-skip if secret absent so the factor export still runs.
+    - name: Refresh option IV history (ThetaData EOD append)
+      env:
+        THETADATA_API_KEY: ${{ secrets.THETADATA_API_KEY }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        if [ -z "${THETADATA_API_KEY:-}" ]; then
+          echo "THETADATA_API_KEY not set — skipping IV refresh (no demo IV invented)."
+          exit 0
+        fi
+        pip install thetadata python-dotenv
+        PYTHONPATH=. python3 scripts/refresh_option_iv_history.py --days 7
+
     - name: Execute Model and Sync to Supabase
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

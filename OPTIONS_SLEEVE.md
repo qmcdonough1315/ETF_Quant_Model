@@ -33,7 +33,7 @@ Liquid ETF options: SPY, QQQ, IWM, and major sector ETFs (`PHASE1_OPTIONABLE_ETF
 ## IV Rank data (live, no demo)
 - **Definition (v1):** ~30 DTE ATM IV = average of call and put Black–Scholes IVs from mid prices.
 - **Bootstrap:** ThetaData free-tier EOD (`run_iv_bootstrap.py`) → `option_iv_history` (see `supabase_option_iv_history.sql`).
-- **Weekly refresh:** `scripts/refresh_option_iv_history.py` (also scheduled in Actions when `THETADATA_API_KEY` is set).
+- **Refresh:** `scripts/refresh_option_iv_history.py` — weekday open/noon IV-only Actions job (`.github/workflows/iv_refresh.yml`) plus Sunday weekly step when `THETADATA_API_KEY` is set. Settled EOD append only (no demo IV; not the factor/composite pipeline).
 - **Coverage / XLRE gaps:** `scripts/report_iv_coverage.py`
 - **Ongoing:** desk must never invent IVR; missing → skip.
 - **Composite:** Cross-sectional z-score of Phase 1 ETF `Total_Expected_Return_3M` exported as `factor_predictions.data_type = options_composite`.

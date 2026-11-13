@@ -152,8 +152,10 @@ HML_CMA_TILT_INTENSITY = 1.0
 
 # Walk-forward research defaults (see BACKTEST_PERIODS.md)
 # One-way equity cost in bps charged on each dollar traded at rebalance
-# (buys and sells). Canonical headline run uses 0; sensitivity uses 5 / 10.
+# (buys and sells). Canonical headline still *prints* the assumption explicitly;
+# 0 bps is research-optimistic — always also report the sensitivity ladder.
 BACKTEST_EQUITY_COST_BPS_ONE_WAY = 0.0
+BACKTEST_EQUITY_COST_SENSITIVITY_BPS = (0.0, 5.0, 10.0)
 BACKTEST_DEFAULT_PERIOD = "FULL"
 # Frozen windows for Wave A research. end=None → use latest available month in data.
 # tune=False means do not fit hyperparameters on that slice (HOLD_OUT).
@@ -235,6 +237,16 @@ OPTIONS_PROFIT_TAKE_PCT = 0.50
 OPTIONS_STOP_MULTIPLE = 2.0
 OPTIONS_MAX_NAME_MARGIN_PCT = 0.02  # of total $100k book
 OPTIONS_MAX_SECTOR_MARGIN_PCT = 0.12  # of options+cash ($50k)
+# Credit limit conservatism vs mid: Alpaca mleg negative limit = credit.
+# Soften mid-credit by this fraction so we do not assume mid fills.
+OPTIONS_FILL_CREDIT_FRACTION = 0.92
+# When bid/ask present, estimate package credit with sell@bid / buy@ask (tighter than mid).
+OPTIONS_CREDIT_CONSERVATIVE_SIDE = True
+# Options sleeve research backtest (see run_options_sleeve_backtest.py)
+OPTIONS_BACKTEST_HOLD_DTE = 37  # mid of 30–45 window
+OPTIONS_BACKTEST_OTM_PCT_25D = 0.045
+OPTIONS_BACKTEST_OTM_PCT_18D = 0.065
+OPTIONS_BACKTEST_IV_LOOKBACK_DAYS = 365
 
 # Wave C joint risk / kill-switch (see RISK_POLICY.md)
 # 50% ETF / 25% options / 25% cash → 15% book DD ≈ 20% on the risk sleeves.

@@ -101,6 +101,23 @@ def _mid_of(c: OptionContractQuote) -> Optional[float]:
     return None
 
 
+def leg_conservative_price(c: OptionContractQuote, side: FillSide) -> Optional[float]:
+    """
+    Fill assumption for credit packaging:
+    - sell-to-open → bid (worse than mid for the seller)
+    - buy-to-open → ask (worse than mid for the buyer)
+    Falls back to mid when the preferred side is missing.
+    """
+    mid = _mid_of(c)
+    if side == "sell":
+        if c.bid is not None and c.bid > 0:
+            return float(c.bid)
+        return mid
+    if c.ask is not None and c.ask > 0:
+        return float(c.ask)
+    return mid
+
+
 def preferred_width(underlying: str, spot: float) -> float:
     u = underlying.upper()
     if u in {"SPY", "QQQ", "IWM"}:
@@ -112,13 +129,57 @@ def preferred_width(underlying: str, spot: float) -> float:
     return 1.0
 
 
-def credit_limit_price(credit_per_share: float, fill_fraction: float = 0.92) -> float:
-    """Alpaca mleg: negative limit_price = credit."""
+def default_fill_credit_fraction() -> float:
+    return float(getattr(config, "OPTIONS_FILL_CREDIT_FRACTION", 0.92))
+
+
+def credit_limit_price(
+    credit_per_share: float,
+    fill_fraction: Optional[float] = None,
+) -> float:
+    """
+    Alpaca mleg: negative limit_price = credit.
+
+    Softens the estimated package credit by `fill_fraction` (default
+    config.OPTIONS_FILL_CREDIT_FRACTION ≈ 0.92) so the working limit does
+    not assume a full mid fill.
+    """
     if credit_per_share <= 0:
         return 0.0
-    frac = min(max(fill_fraction, 0.5), 1.0)
+    if fill_fraction is None:
+        fill_fraction = default_fill_credit_fraction()
+    frac = min(max(float(fill_fraction), 0.5), 1.0)
     softened = credit_per_share * frac
     return -round(max(softened, 0.01), 2)
+
+
+def estimate_package_credit(
+    legs: list[OrderLegSpec] | tuple[OrderLegSpec, ...],
+    contracts_by_symbol: Optional[dict[str, OptionContractQuote]] = None,
+    *,
+    conservative_side: Optional[bool] = None,
+) -> Optional[float]:
+    """
+    Net credit per share for the multi-leg package.
+
+    When conservative_side is True (default from config) and quotes are
+    available, sells mark at bid and buys at ask. Otherwise uses leg.mid.
+    """
+    if conservative_side is None:
+        conservative_side = bool(getattr(config, "OPTIONS_CREDIT_CONSERVATIVE_SIDE", True))
+    credit = 0.0
+    for leg in legs:
+        px: Optional[float] = None
+        if conservative_side and contracts_by_symbol is not None:
+            quote = contracts_by_symbol.get(leg.symbol)
+            if quote is not None:
+                px = leg_conservative_price(quote, leg.side)
+        if px is None:
+            px = leg.mid
+        if px is None:
+            return None
+        credit += px if leg.side == "sell" else -px
+    return float(credit)
 
 
 def _pick_expiration(
@@ -241,7 +302,7 @@ def propose_defined_risk_trade(
     *,
     as_of: Optional[datetime] = None,
     capital_budget_usd: Optional[float] = None,
-    fill_credit_fraction: float = 0.92,
+    fill_credit_fraction: Optional[float] = None,
 ) -> TradeProposal | TradeProposalSkip:
     signal = build_signal(ticker, composite_score, iv_rank)
     if signal.structure in {"skip_low_iv", "skip_kill_switch"}:
@@ -305,17 +366,18 @@ def propose_defined_risk_trade(
         if short_call.delta is None:
             notes.append("Call short strike via OTM % proxy (no delta).")
 
-    credit = 0.0
-    for leg in legs:
-        if leg.mid is None:
-            return TradeProposalSkip(
-                underlying, signal.structure, signal, "Missing bid/ask mids for credit estimate."
-            )
-        credit += leg.mid if leg.side == "sell" else -leg.mid
+    by_symbol = {c.symbol: c for c in dated}
+    credit = estimate_package_credit(legs, by_symbol)
+    if credit is None:
+        return TradeProposalSkip(
+            underlying, signal.structure, signal, "Missing bid/ask mids for credit estimate."
+        )
     if credit <= 0:
         return TradeProposalSkip(
             underlying, signal.structure, signal, "Estimated net debit — refusing non-credit structure."
         )
+    if bool(getattr(config, "OPTIONS_CREDIT_CONSERVATIVE_SIDE", True)):
+        notes.append("Credit marked sell@bid / buy@ask when quotes present (conservative vs mid).")
 
     widths: list[float] = []
     puts = [l for l in legs if l.right == "P"]
@@ -337,7 +399,13 @@ def propose_defined_risk_trade(
         )
     qty = min(qty, 5)
 
+    if fill_credit_fraction is None:
+        fill_credit_fraction = default_fill_credit_fraction()
     limit_price = credit_limit_price(credit, fill_credit_fraction)
+    notes.append(
+        f"Limit softens mid/side credit by fill_fraction={fill_credit_fraction:.2f} "
+        f"(limit_price={limit_price})."
+    )
     max_loss = max(actual_width - credit, 0.0) * 100.0
     return TradeProposal(
         ticker=underlying,

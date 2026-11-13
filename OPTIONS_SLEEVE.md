@@ -1,4 +1,6 @@
-# Options / Volatility Paper Sleeve
+# Options / Volatility Paper Sleeve (cheat sheet)
+
+Full MBA-friendly narrative: **[`OPTIONS_BOOK.md`](OPTIONS_BOOK.md)**. Broker details: [`ALPACA.md`](ALPACA.md). ETF model: [`README.md`](README.md).
 
 ## Role
 Express **shorts** and modest **long extension** without changing the long-only ETF MVO. Capital: **$25k** options buying power + **$25k** cash-engine margin reserve.

@@ -3,9 +3,11 @@
 ## Objective
 Simulate — and for weekly **buys**, execute on Alpaca paper — a weekly paper account that dollar-cost averages **~$3,846.15** (`$50,000 ÷ 13`) into each Sunday model run’s target weights, while applying a tax-aware exit policy, HIFO lot selection, and wash-sale-safe tax-loss harvesting (TLH). Equity buy proposals/orders live in `modules/etf_orders.py` + `place_equity_order`; HIFO/TLH **sells** remain ledger-side.
 
+Model overview: [`README.md`](README.md). Options sleeve narrative: [`OPTIONS_BOOK.md`](OPTIONS_BOOK.md).
+
 The broader paper book is **$100k**:
 - **$50k** ETF factor sleeve (13-week DCA ladder)
-- **$25k** short-options / vol sleeve (defined-risk; see `modules/options_sleeve.py`)
+- **$25k** short-options / vol sleeve (defined-risk; see `modules/options_sleeve.py` / `OPTIONS_BOOK.md`)
 - **$25k** cash-engine margin reserve (weekly top yield)
 
 ## Capital schedule (ETF sleeve)

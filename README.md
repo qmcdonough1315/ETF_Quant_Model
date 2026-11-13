@@ -195,11 +195,11 @@ We do **not** judge the model by a single in-sample fit. Two related engines exi
 
 ### 8.1 Walk-forward backtest (primary research loop)
 
-Script: `run_walkforward_backtest.py` (logic also in `backtest_engine.py`).
+Script: `run_walkforward_backtest.py` (shared helpers in `modules/backtest_returns.py`; also `backtest_engine.py`).
 
-**Idea:** At rebalance date \(t\), use **only** data ≤ \(t\) to estimate betas, forecast factors, and build weights. Then hold that portfolio for the next **3 months**, record the realized return, advance \(t\) by 3 months, and repeat. That is the standard defense against look-ahead bias / data snooping.
+**Idea:** At rebalance date \(t\), use **only** data ≤ \(t\) to estimate betas, forecast factors, and build weights. Then hold that portfolio for the next **3 months**, record the realized return as **Σ wᵢ rᵢ** using production `Target_Weight`, advance \(t\) by 3 months, and repeat. That is the standard defense against look-ahead bias / data snooping. Use `--equal-weight` only as an ablation; `--cost-bps` applies one-way equity costs on traded notional.
 
-**Default research window:** roughly `2018-12-31` → `2026-06-30` (configurable).
+**Frozen windows:** [`BACKTEST_PERIODS.md`](BACKTEST_PERIODS.md) / `config.BACKTEST_PERIODS` (`FULL`, `HOLD_OUT`, `COVID`, `BEAR_22`, …).
 
 **Benchmarks compound in parallel on the same holding windows:**
 
@@ -262,8 +262,10 @@ Prefer comparing **risk-adjusted** outcomes (Sharpe, drawdown behavior) and **im
 # Weekly production (needs SUPABASE_* and market data access)
 python main.py
 
-# Research backtest
-PYTHONPATH=. python3 run_walkforward_backtest.py
+# Research backtest (production weights; see BACKTEST_PERIODS.md)
+PYTHONPATH=. python3 run_walkforward_backtest.py --period FULL
+PYTHONPATH=. python3 run_walkforward_backtest.py --period COVID --cost-bps 5
+PYTHONPATH=. python3 run_walkforward_backtest.py --smoke   # fast end-to-end on a small liquid universe
 
 # Unit tests (paper HIFO / DCA helpers, IV math when present)
 PYTHONPATH=. python3 -m pytest tests/ -q

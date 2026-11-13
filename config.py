@@ -150,6 +150,65 @@ MVO_COV_LOOKBACK_MONTHS = 36
 MVO_CANDIDATE_POOL = 40
 HML_CMA_TILT_INTENSITY = 1.0
 
+# Walk-forward research defaults (see BACKTEST_PERIODS.md)
+# One-way equity cost in bps charged on each dollar traded at rebalance
+# (buys and sells). Canonical headline run uses 0; sensitivity uses 5 / 10.
+BACKTEST_EQUITY_COST_BPS_ONE_WAY = 0.0
+BACKTEST_DEFAULT_PERIOD = "FULL"
+# Frozen windows for Wave A research. end=None → use latest available month in data.
+# tune=False means do not fit hyperparameters on that slice (HOLD_OUT).
+BACKTEST_PERIODS = {
+    "FULL": {
+        "start": "2019-01-31",
+        "end": "2025-12-31",
+        "rebalance_step_months": 3,
+        "tune": True,
+        "label": "Headline span post most modern ETF listings",
+    },
+    "HOLD_OUT": {
+        "start": "2024-07-31",
+        "end": None,
+        "rebalance_step_months": 3,
+        "tune": False,
+        "label": "Report card only — do not tune knobs after locking",
+    },
+    "COVID": {
+        "start": "2020-01-31",
+        "end": "2020-12-31",
+        "rebalance_step_months": 3,
+        "tune": True,
+        "label": "Crash + rebound",
+    },
+    "BEAR_22": {
+        "start": "2022-01-31",
+        "end": "2022-12-31",
+        "rebalance_step_months": 3,
+        "tune": True,
+        "label": "Inflation / rates bear",
+    },
+    "VOL_18": {
+        "start": "2018-01-31",
+        "end": "2018-12-31",
+        "rebalance_step_months": 3,
+        "tune": True,
+        "label": "Late-cycle vol spike (check universe coverage)",
+    },
+    "BULL_23_24": {
+        "start": "2023-01-31",
+        "end": "2024-06-30",
+        "rebalance_step_months": 3,
+        "tune": True,
+        "label": "Narrow leadership / calmer vol regime",
+    },
+    "THEME_3_6": {
+        "start": "2019-01-31",
+        "end": "2025-12-31",
+        "rebalance_step_months": 6,
+        "tune": True,
+        "label": "6-month hold ablation vs 3-month clock",
+    },
+}
+
 # Paper DCA + tax-aware ledger
 # Ladder $50k over the ~3-month (13-week) min-hold so one vintage matures each week.
 ETF_TARGET_CAPITAL_USD = 50_000.0

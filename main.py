@@ -91,6 +91,8 @@ def main():
         portfolio_sharpe=port_sharpe,
         options_composites=options_composites,
     )
+    # Options composites are published for the desk. Propose/place stays HITL —
+    # see DESK_RUNBOOK.md (no auto mleg from main.py).
 
     # 5. Paper DCA + tax-aware ledger (load/save lots; propose TLH sells).
     #    A price-feed failure must not fail the weekly factor export above.

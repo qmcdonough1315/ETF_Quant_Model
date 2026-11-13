@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Literal, Optional
 
+from modules.options_liquidity import cap_contracts, check_leg_liquidity, liquidity_limits
 from modules.options_sleeve import (
     OptionsSignal,
     Structure,
@@ -24,6 +25,8 @@ FillSide = Literal["buy", "sell"]
 Right = Literal["C", "P"]
 ContractType = Literal["call", "put"]
 
+_SKIP_STRUCTURES = frozenset({"skip_low_iv", "skip_missing_iv", "skip_kill_switch"})
+
 
 @dataclass(frozen=True)
 class OptionContractQuote:
@@ -36,6 +39,7 @@ class OptionContractQuote:
     bid: Optional[float] = None
     ask: Optional[float] = None
     delta: Optional[float] = None
+    open_interest: Optional[float] = None
     tradable: bool = True
 
 
@@ -293,19 +297,52 @@ def build_mleg_payload(proposal: TradeProposal) -> dict[str, Any]:
     }
 
 
+def ex_div_blocks_short_calls(
+    structure: Structure,
+    *,
+    next_ex_div: Optional[date],
+    as_of_day: date,
+    buffer_days: Optional[int] = None,
+) -> Optional[str]:
+    """
+    Short calls (bear call / iron condor) must not be opened into a known ex-div.
+    Returns skip reason or None. Desk must supply next_ex_div when the feed has it.
+    """
+    if next_ex_div is None:
+        return None
+    if structure not in {"bear_call_spread", "iron_condor"}:
+        return None
+    buf = int(
+        buffer_days
+        if buffer_days is not None
+        else getattr(config, "OPTIONS_EX_DIV_BUFFER_DAYS", 7)
+    )
+    delta = (next_ex_div - as_of_day).days
+    if 0 <= delta <= buf:
+        return (
+            f"Short call blocked: ex-div {next_ex_div.isoformat()} within {buf}d "
+            f"(see OPTIONS_RISK_OPS.md)."
+        )
+    return None
+
+
 def propose_defined_risk_trade(
     ticker: str,
     composite_score: float,
-    iv_rank: float,
+    iv_rank: Optional[float],
     underlying_price: float,
     contracts: list[OptionContractQuote],
     *,
     as_of: Optional[datetime] = None,
     capital_budget_usd: Optional[float] = None,
     fill_credit_fraction: Optional[float] = None,
+    next_ex_div: Optional[date] = None,
+    kill_switch_active: Optional[bool] = None,
 ) -> TradeProposal | TradeProposalSkip:
-    signal = build_signal(ticker, composite_score, iv_rank)
-    if signal.structure in {"skip_low_iv", "skip_kill_switch"}:
+    signal = build_signal(
+        ticker, composite_score, iv_rank, kill_switch_active=kill_switch_active
+    )
+    if signal.structure in _SKIP_STRUCTURES:
         return TradeProposalSkip(
             ticker=signal.ticker,
             structure=signal.structure,
@@ -317,6 +354,13 @@ def propose_defined_risk_trade(
     spot = float(underlying_price)
     if spot <= 0:
         return TradeProposalSkip(underlying, signal.structure, signal, "Underlying price unavailable.")
+
+    as_of_day = _today(as_of)
+    ex_block = ex_div_blocks_short_calls(
+        signal.structure, next_ex_div=next_ex_div, as_of_day=as_of_day
+    )
+    if ex_block:
+        return TradeProposalSkip(underlying, signal.structure, signal, ex_block)
 
     chain = [
         c
@@ -332,10 +376,27 @@ def propose_defined_risk_trade(
             f"No contracts in {signal.dte_min}–{signal.dte_max} DTE window.",
         )
     expiration_date, dte = picked
+    min_entry = int(getattr(config, "OPTIONS_MIN_ENTRY_DTE", 21))
+    pin_close = int(getattr(config, "OPTIONS_PIN_CLOSE_DTE", 7))
+    if dte <= pin_close:
+        return TradeProposalSkip(
+            underlying,
+            signal.structure,
+            signal,
+            f"DTE {dte} ≤ pin-close floor {pin_close} (OPTIONS_RISK_OPS.md).",
+        )
+    if dte < min_entry:
+        return TradeProposalSkip(
+            underlying,
+            signal.structure,
+            signal,
+            f"DTE {dte} below min entry {min_entry}.",
+        )
     dated = [c for c in chain if c.expiration_date == expiration_date]
     width = preferred_width(underlying, spot)
     notes: list[str] = []
     legs: list[OrderLegSpec] = []
+    lim = liquidity_limits(underlying)
 
     if signal.structure in {"bull_put_spread", "iron_condor"}:
         short_put = _pick_short(dated, "put", spot, signal.short_delta)
@@ -346,6 +407,16 @@ def propose_defined_risk_trade(
             return TradeProposalSkip(
                 underlying, signal.structure, signal, "No long put wing for defined risk."
             )
+        for c in (short_put, long_put):
+            liq = check_leg_liquidity(
+                ticker=underlying,
+                bid=c.bid,
+                ask=c.ask,
+                open_interest=c.open_interest,
+                limits=lim,
+            )
+            if liq:
+                return TradeProposalSkip(underlying, signal.structure, signal, liq)
         legs.extend([_leg_spec(short_put, "sell"), _leg_spec(long_put, "buy")])
         if short_put.delta is None:
             notes.append("Put short strike via OTM % proxy (no delta).")
@@ -362,6 +433,16 @@ def propose_defined_risk_trade(
             return TradeProposalSkip(
                 underlying, signal.structure, signal, "No long call wing for defined risk."
             )
+        for c in (short_call, long_call):
+            liq = check_leg_liquidity(
+                ticker=underlying,
+                bid=c.bid,
+                ask=c.ask,
+                open_interest=c.open_interest,
+                limits=lim,
+            )
+            if liq:
+                return TradeProposalSkip(underlying, signal.structure, signal, liq)
         legs.extend([_leg_spec(short_call, "sell"), _leg_spec(long_call, "buy")])
         if short_call.delta is None:
             notes.append("Call short strike via OTM % proxy (no delta).")
@@ -397,7 +478,18 @@ def propose_defined_risk_trade(
         return TradeProposalSkip(
             underlying, signal.structure, signal, f"Max loss exceeds capital budget ({budget:.0f})."
         )
-    qty = min(qty, 5)
+    qty = cap_contracts(underlying, min(qty, 5))
+    if qty < 1:
+        return TradeProposalSkip(
+            underlying,
+            signal.structure,
+            signal,
+            f"Liquidity max_contracts cap is 0 for {underlying}.",
+        )
+    notes.append(
+        f"Liquidity cap max_contracts={int(lim['max_contracts'])} "
+        f"max_spread={lim['max_spread_width']:.2f}."
+    )
 
     if fill_credit_fraction is None:
         fill_credit_fraction = default_fill_credit_fraction()

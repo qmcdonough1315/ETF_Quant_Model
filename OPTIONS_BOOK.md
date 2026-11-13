@@ -90,6 +90,18 @@ PYTHONPATH=. python3 scripts/upsert_iv_history_csv.py data/option_iv_history/atm
 
 Requires `THETADATA_API_KEY`, and `SUPABASE_URL` / `SUPABASE_KEY` for upsert. Ongoing snapshots can append with a different `source` field; desk rules forbid inventing IVR when history is missing.
 
+**Production refresh (Wave E / #8):**
+
+```bash
+# Append last ~7 settled EOD days (weekly Actions step when THETADATA_API_KEY is set)
+PYTHONPATH=. python3 scripts/refresh_option_iv_history.py --days 7
+
+# Coverage + XLRE gaps vs SPY (optional --backfill-xlre)
+PYTHONPATH=. python3 scripts/report_iv_coverage.py
+```
+
+Missing IVR → `skip_missing_iv` (fail closed) in `build_signal` / propose path — never invent a rank.
+
 ---
 
 ## 4. The second axis: factor composite
@@ -122,6 +134,9 @@ Exported as `factor_predictions` rows with `data_type = options_composite` for t
 | Q2 | Low composite, IVR elevated | **Bear call spread** | ~0.25 | 30–45 |
 | Q3 | Neutral composite, IVR elevated | **Iron condor** | ~0.18 wings | 30–45 |
 | Q4 | IVR &lt; 30 | **Skip** | — | — |
+| Missing IVR | History unavailable | **Skip** (`skip_missing_iv`) | — | — |
+
+**Phase 1 language lock:** harvest **rich** IVR via credit structures; **stand aside** when cheap. Phase 1 does **not** buy undervalued vol. Phase 2 long-vol candidates stay in the exec summary — not wired to propose/place.
 
 ### 5.1 What each structure is (MBA picture)
 
@@ -193,6 +208,8 @@ Key modules:
 | `run_options_sleeve_backtest.py` | Options sleeve backtest CLI |
 
 Web desk (Quirk Macro repo): Options Book UI proposes/places using the same rules (`options-orders.ts`, `options-sleeve-rules.ts`). Paper-only placement requires `confirm=true` against `paper-api.alpaca.markets`.
+
+**Execution boundary:** human-in-the-loop — see [`DESK_RUNBOOK.md`](DESK_RUNBOOK.md). `main.py` does not auto-place options. Assignment / pin / ex-div: [`OPTIONS_RISK_OPS.md`](OPTIONS_RISK_OPS.md). Liquidity caps: `OPTIONS_LIQUIDITY_BY_TICKER` in `config.py` (SPY/QQQ/IWM looser than sector names).
 
 ---
 

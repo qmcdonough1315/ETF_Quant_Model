@@ -248,6 +248,43 @@ OPTIONS_BACKTEST_OTM_PCT_25D = 0.045
 OPTIONS_BACKTEST_OTM_PCT_18D = 0.065
 OPTIONS_BACKTEST_IV_LOOKBACK_DAYS = 365
 
+# Wave E — assignment / pin / ex-div (see OPTIONS_RISK_OPS.md)
+# Block new short-call risk when an ex-div falls within this many calendar days.
+OPTIONS_EX_DIV_BUFFER_DAYS = 7
+# Desk must close/roll short premium before this DTE (pin / gamma risk).
+OPTIONS_PIN_CLOSE_DTE = 7
+# Hard refuse new proposals with DTE at or below this floor (belt + suspenders vs 30–45 window).
+OPTIONS_MIN_ENTRY_DTE = 21
+
+# Wave E — liquidity / capacity by name (max contracts, max mid-spread $, optional min OI)
+# Index names looser; sector SPDRs stricter. Missing ticker → sector defaults.
+OPTIONS_LIQUIDITY_INDEX_DEFAULTS = {
+    "max_contracts": 8,
+    "max_spread_width": 0.20,  # dollars per share on each leg mid-spread
+    "min_open_interest": 100,
+}
+OPTIONS_LIQUIDITY_SECTOR_DEFAULTS = {
+    "max_contracts": 3,
+    "max_spread_width": 0.35,
+    "min_open_interest": 50,
+}
+OPTIONS_LIQUIDITY_BY_TICKER = {
+    "SPY": {"max_contracts": 10, "max_spread_width": 0.15, "min_open_interest": 500},
+    "QQQ": {"max_contracts": 8, "max_spread_width": 0.20, "min_open_interest": 300},
+    "IWM": {"max_contracts": 6, "max_spread_width": 0.25, "min_open_interest": 200},
+    "XLK": {"max_contracts": 4, "max_spread_width": 0.30, "min_open_interest": 75},
+    "XLF": {"max_contracts": 4, "max_spread_width": 0.30, "min_open_interest": 75},
+    "XLE": {"max_contracts": 3, "max_spread_width": 0.35, "min_open_interest": 50},
+    "XLV": {"max_contracts": 3, "max_spread_width": 0.35, "min_open_interest": 50},
+    "XLI": {"max_contracts": 3, "max_spread_width": 0.35, "min_open_interest": 50},
+    "XLY": {"max_contracts": 3, "max_spread_width": 0.35, "min_open_interest": 50},
+    "XLP": {"max_contracts": 3, "max_spread_width": 0.35, "min_open_interest": 50},
+    "XLU": {"max_contracts": 3, "max_spread_width": 0.40, "min_open_interest": 40},
+    "XLB": {"max_contracts": 3, "max_spread_width": 0.40, "min_open_interest": 40},
+    "XLRE": {"max_contracts": 2, "max_spread_width": 0.45, "min_open_interest": 30},
+    "XLC": {"max_contracts": 3, "max_spread_width": 0.35, "min_open_interest": 50},
+}
+
 # Wave C joint risk / kill-switch (see RISK_POLICY.md)
 # 50% ETF / 25% options / 25% cash → 15% book DD ≈ 20% on the risk sleeves.
 RISK_COMBINED_DD_YELLOW = 0.10  # halt new short premium; review

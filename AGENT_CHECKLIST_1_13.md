@@ -321,7 +321,7 @@ Also add BACKTEST_PERIODS.md (and optional config dict) with the period menu fro
 
 | ID | Owner agent | PR | Status |
 |---|---|---|---|
-| #1 Walk-forward weights | | | |
+| #1 Walk-forward weights | Wave A | cursor/walkforward-weights-c180 | done (PR) |
 | #2 Ledger persistence | | | |
 | #3 Kill-switch policy | | | |
 | #4 Costs | | | |
@@ -334,4 +334,4 @@ Also add BACKTEST_PERIODS.md (and optional config dict) with the period menu fro
 | #11 Assignment/ex-div | | | |
 | #12 Liquidity caps | | | |
 | #13 LP language | | | |
-| Periods pack | | | |
+| Periods pack | Wave A | cursor/walkforward-weights-c180 | done (PR) |

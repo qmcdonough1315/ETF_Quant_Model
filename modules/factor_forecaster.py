@@ -4,6 +4,15 @@ from sklearn.multioutput import MultiOutputRegressor
 import lightgbm as lgb
 import config
 
+def _as_month_period_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Align factor/macro frames on monthly PeriodIndex without mutating callers."""
+    out = df.copy()
+    if isinstance(out.index, pd.PeriodIndex):
+        return out
+    out.index = pd.to_datetime(out.index).to_period("M")
+    return out
+
+
 def create_factor_features_and_targets(
     factor_df: pd.DataFrame,
     macro_df: pd.DataFrame,
@@ -14,6 +23,8 @@ def create_factor_features_and_targets(
     if horizon is None:
         horizon = config.FORECAST_HORIZON_MONTHS
 
+    factor_df = _as_month_period_index(factor_df)
+    macro_df = _as_month_period_index(macro_df)
     df_factors = factor_df[config.TARGET_FACTORS].copy()
     
     # 1. Factor Lag Features

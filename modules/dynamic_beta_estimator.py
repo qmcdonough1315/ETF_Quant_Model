@@ -13,15 +13,19 @@ def run_kalman_filter_regressions(etf_returns_df: pd.DataFrame, factor_df: pd.Da
     to dynamically track ETF betas and alpha over time without collinearity collapse.
     """
     print("📈 Executing Regularized Kalman Filter (Ridge Seeded) for Dynamic Betas...")
-    
+
+    # Copy so we never mutate caller frames (walk-forward reuses hist_factors/macro).
+    etf_returns_df = etf_returns_df.copy()
+    factor_df = factor_df.copy()
+
     # Ensure exact index alignment safely, regardless of whether it's already a PeriodIndex
     if not isinstance(etf_returns_df.index, pd.PeriodIndex):
-        etf_returns_df.index = pd.to_datetime(etf_returns_df.index).to_period('M')
-        
+        etf_returns_df.index = pd.to_datetime(etf_returns_df.index).to_period("M")
+
     if not isinstance(factor_df.index, pd.PeriodIndex):
-        factor_df.index = pd.to_datetime(factor_df.index).to_period('M')
-    
-    df_merged = etf_returns_df.join(factor_df, how='inner')
+        factor_df.index = pd.to_datetime(factor_df.index).to_period("M")
+
+    df_merged = etf_returns_df.join(factor_df, how="inner")
     results = {}
     
     factors = config.TARGET_FACTORS

@@ -582,18 +582,35 @@ def export_paper_summary_to_supabase(as_of: str, summary: dict) -> None:
 
     client = create_client(url, key)
     records = []
+    skipped: list[str] = []
     for metric, value in summary.items():
+        # Summary also carries fill_date / nested propose payloads — only persist numerics.
+        try:
+            if isinstance(value, bool) or value is None:
+                raise TypeError(metric)
+            if isinstance(value, (dict, list, tuple)):
+                raise TypeError(metric)
+            num = float(value)
+        except (TypeError, ValueError):
+            skipped.append(str(metric))
+            continue
         records.append(
             {
                 "execution_date": as_of,
                 "data_type": "paper_summary",
                 "ticker_or_factor": metric,
-                "value": float(value),
+                "value": num,
             }
         )
+    if not records:
+        print("paper_portfolio export skipped: no numeric summary fields")
+        return
     try:
         client.table("paper_portfolio").insert(records).execute()
-        print(f"Exported {len(records)} paper_portfolio summary rows for {as_of}")
+        msg = f"Exported {len(records)} paper_portfolio summary rows for {as_of}"
+        if skipped:
+            msg += f" (skipped non-numeric: {', '.join(skipped)})"
+        print(msg)
     except Exception as exc:
         print(f"paper_portfolio export failed (create table via supabase_paper_portfolio.sql?): {exc}")
 

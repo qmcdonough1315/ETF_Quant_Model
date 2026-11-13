@@ -47,3 +47,5 @@ While those exposures mature, equity markets remain **choppy**. Option markets c
 ### What capital is funding
 
 Research-to-paper infrastructure already in repo: weekly model run, Supabase publishing, Alpaca paper execution paths, IV history bootstrap for live IV Rank (no demo vol), and tax-aware ETF DCA/TLH rules. Next diligence artifacts allocators should demand: published walk-forward tables vs VTI/SPY, options sleeve loss budget vs the $25k reserve, and a written kill-switch policy for vol regimes.
+
+Internal build queue with copy-paste Cloud Agent prompts: [`AGENT_CHECKLIST_1_13.md`](AGENT_CHECKLIST_1_13.md).

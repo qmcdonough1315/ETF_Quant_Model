@@ -90,6 +90,16 @@ PYTHONPATH=. python3 scripts/upsert_iv_history_csv.py data/option_iv_history/atm
 
 Requires `THETADATA_API_KEY`, and `SUPABASE_URL` / `SUPABASE_KEY` for upsert. Ongoing snapshots can append with a different `source` field; desk rules forbid inventing IVR when history is missing.
 
+**Databento OPRA alternative (EOD NBBO under free credits):** there is no `cbbo-1d`; we take `cbbo-1m` for `TICKER.OPT` parents in **15:50–16:00 ET**, reduce to ATM ~30 DTE IV locally (`source=databento_cbbo`). Full-session CBBO for all Phase 1 chains is far above ~$125 — use the cost estimator / budget packs first.
+
+```bash
+pip install databento yfinance pandas numpy
+PYTHONPATH=. python3 scripts/databento_iv_cost_estimate.py
+# After setting DATABENTO_API_KEY — prefer a budget pack (e.g. core3):
+PYTHONPATH=. python3 scripts/run_databento_iv_bootstrap.py --tickers SPY,QQQ,IWM --cost-only
+PYTHONPATH=. python3 scripts/run_databento_iv_bootstrap.py --tickers SPY,QQQ,IWM
+```
+
 **Production refresh (Wave E / #8):**
 
 ```bash
@@ -205,6 +215,7 @@ Key modules:
 | `modules/black_scholes_iv.py` | Mid → BS IV |
 | `modules/iv_rank.py` | IVR from stored history |
 | `modules/thetadata_iv_bootstrap.py` | ~30 DTE ATM IV history pull |
+| `modules/databento_iv_bootstrap.py` | Databento OPRA EOD NBBO → ATM IV (cost-gated) |
 | `modules/alpaca_client.py` | Paper account / `place_mleg_order` |
 | `run_iv_bootstrap.py` | CLI for history bootstrap |
 | `run_options_sleeve_backtest.py` | Options sleeve backtest CLI |

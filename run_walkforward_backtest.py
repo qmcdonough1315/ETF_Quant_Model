@@ -29,6 +29,7 @@ from modules.data_ingestion import fetch_all_data
 from modules.dynamic_beta_estimator import run_kalman_filter_regressions
 from modules.factor_forecaster import generate_factor_forecasts
 from modules.fund_scorer import score_and_rank_funds
+from modules.point_in_time import ken_french_asof
 from modules.research_card import (
     holding_window_return,
     metrics_payload,
@@ -167,7 +168,8 @@ def run_walkforward_backtest(
         holding_dates = rebalance_dates[i + 1 : i + 1 + rebalance_step_months]
 
         hist_returns = returns_df.loc[:current_date]
-        hist_factors = factors.loc[:current_date]
+        # Ken French month T is not available at month-end T (publication lag).
+        hist_factors = ken_french_asof(factors, current_date)
         hist_macro = macro.loc[:current_date]
 
         top_picks_df = pd.DataFrame()

@@ -2,6 +2,7 @@ import config
 from modules.data_ingestion import fetch_all_data
 from modules.dynamic_beta_estimator import run_kalman_filter_regressions
 from modules.factor_forecaster import generate_factor_forecasts
+from modules.point_in_time import ken_french_asof
 from modules.fund_scorer import score_and_rank_funds
 from modules.portfolio_optimizer import portfolio_expected_metrics
 from modules.options_composite import composites_from_scores_df
@@ -34,12 +35,20 @@ def main():
     # 1. Ingest Data
     prices, factors, macro = fetch_all_data(config.ETF_POPULATION)
 
+    # Point-in-time Ken French: month-T factors are not known at month-end T.
+    decision_asof = factors.index.max()
+    factors_pit = ken_french_asof(factors, decision_asof)
+    print(
+        f"  • Ken French PIT lag={config.KEN_FRENCH_PUBLICATION_LAG_MONTHS}m "
+        f"(asof {decision_asof} → factors through {factors_pit.index.max()})"
+    )
+
     # 2. Kalman Filter Betas
-    beta_profiles = run_kalman_filter_regressions(prices, factors)
+    beta_profiles = run_kalman_filter_regressions(prices, factors_pit)
 
     # 3. Forecast Factor Returns
     forecast_report = generate_factor_forecasts(
-        factors,
+        factors_pit,
         macro,
         threshold=config.MIN_FACTOR_THRESHOLD,
     )

@@ -71,6 +71,19 @@ def test_options_pnl_binning_by_exit():
     assert abs(rets.iloc[2] - 250 / 50_000) < 1e-12
 
 
+def test_write_json_rejects_bare_nan(tmp_path):
+    import json
+    from modules.research_card import write_json
+
+    path = tmp_path / "card.json"
+    write_json(path, {"hit_rate_vs_benchmark": float("nan"), "ok": 1.0})
+    raw = path.read_text()
+    assert "NaN" not in raw
+    loaded = json.loads(raw)
+    assert loaded["hit_rate_vs_benchmark"] is None
+    assert loaded["ok"] == 1.0
+
+
 def test_research_assumptions_50_50_and_report_renders():
     a = research_assumptions(cost_bps_one_way=5.0)
     assert a["total_capital_usd"] == 100_000.0

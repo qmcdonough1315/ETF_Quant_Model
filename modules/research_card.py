@@ -147,7 +147,11 @@ def build_card_envelope(
 def write_json(path: Path, payload: dict[str, Any]) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, default=_json_default) + "\n")
+    clean = _sanitize_for_json(payload)
+    # allow_nan=False so Vite/JSON.parse never see bare NaN/Infinity tokens.
+    path.write_text(
+        json.dumps(clean, indent=2, default=_json_default, allow_nan=False) + "\n"
+    )
     return path
 
 
@@ -155,14 +159,34 @@ def read_json(path: Path) -> dict[str, Any]:
     return json.loads(Path(path).read_text())
 
 
+def _sanitize_for_json(obj: Any) -> Any:
+    """Recursively replace NaN/±Inf with None for strict JSON."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, float):
+        if obj != obj or obj in (float("inf"), float("-inf")):
+            return None
+        return obj
+    if isinstance(obj, (pd.Timestamp, datetime)):
+        return obj.isoformat()
+    if hasattr(obj, "item"):
+        try:
+            return _sanitize_for_json(obj.item())
+        except Exception:  # noqa: BLE001
+            pass
+    return obj
+
+
 def _json_default(obj: Any) -> Any:
     if isinstance(obj, (pd.Timestamp, datetime)):
         return obj.isoformat()
-    if isinstance(obj, float) and (obj != obj):  # NaN
+    if isinstance(obj, float) and (obj != obj or obj in (float("inf"), float("-inf"))):
         return None
     if hasattr(obj, "item"):
         try:
-            return obj.item()
+            return _sanitize_for_json(obj.item())
         except Exception:  # noqa: BLE001
             pass
     return str(obj)

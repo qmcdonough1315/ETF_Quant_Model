@@ -1,0 +1,518 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-13T23:46:46.130650+00:00",
+  "run_id": "sample",
+  "assumptions": {
+    "total_capital_usd": 100000.0,
+    "etf_weight": 0.5,
+    "options_weight": 0.5,
+    "etf_capital_usd": 50000.0,
+    "options_book_usd": 50000.0,
+    "options_book_includes_cash_reserve": true,
+    "etf_cost_bps_one_way": 5.0,
+    "rebalance_step_months": 3,
+    "risk_free_rate": 0.03,
+    "weighting": "Target_Weight",
+    "headline_peer": "VOO_JEPI_50_50",
+    "note": "Allocator view is $100k at 50/50 ETF model / options book. Paper ops may still show $25k options sleeve + $25k margin reserve; research collapses that reserve into the options book (collateral for bets). Idle options cash earns 0 in this card unless noted. THIS FILE IS A SCHEMA SAMPLE with illustrative numbers \u2014 not live backtest output.",
+    "sample": true
+  },
+  "benchmarks": {
+    "VOO": {
+      "label": "Primary patient beta",
+      "weights": {
+        "VOO": 1.0
+      },
+      "role": "primary"
+    },
+    "JEPI": {
+      "label": "Peer proxy \u2014 equity + premium",
+      "weights": {
+        "JEPI": 1.0
+      },
+      "role": "peer_proxy"
+    },
+    "VOO_JEPI_50_50": {
+      "label": "Closest twin to 50/50 ETF + premium stack",
+      "weights": {
+        "VOO": 0.5,
+        "JEPI": 0.5
+      },
+      "role": "headline_peer"
+    },
+    "VGT": {
+      "label": "Style stress (tech concentration)",
+      "weights": {
+        "VGT": 1.0
+      },
+      "role": "style_stress"
+    }
+  },
+  "periods": [
+    {
+      "period_id": "FULL",
+      "label": "Headline span post most modern ETF listings",
+      "start": "2019-01-31",
+      "end": "2025-12-31",
+      "tune": true,
+      "coverage": 0.92,
+      "sample": true,
+      "etf": {
+        "n_periods": 4,
+        "final_value": 73100.0,
+        "total_return": 0.462,
+        "ann_vol": 0.15,
+        "sharpe": 0.6000000000000001,
+        "max_drawdown": -0.18,
+        "hit_rate_vs_benchmark": 0.55,
+        "excess_total_vs_benchmark": 0.04,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "coverage": 0.92
+      },
+      "options": {
+        "status": "sample",
+        "n_trades": 12,
+        "total_return": 0.378,
+        "sharpe": 0.5,
+        "max_drawdown": -0.09,
+        "final_value": 68900.0,
+        "ann_vol": 0.1,
+        "hit_rate_vs_benchmark": null,
+        "excess_total_vs_benchmark": null,
+        "note": "Placeholder \u2014 replace with period pack output"
+      },
+      "combined": {
+        "n_periods": 4,
+        "final_value": 142000.0,
+        "total_return": 0.42,
+        "ann_vol": 0.15,
+        "sharpe": 0.55,
+        "max_drawdown": -0.18,
+        "hit_rate_vs_benchmark": 0.55,
+        "excess_total_vs_benchmark": 0.04,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "status": "sample",
+        "etf_weight": 0.5,
+        "options_weight": 0.5
+      },
+      "benchmarks": {
+        "VOO": {
+          "n_periods": 4,
+          "final_value": 68050.0,
+          "total_return": 0.361,
+          "ann_vol": 0.14,
+          "sharpe": 0.5,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "JEPI": {
+          "n_periods": 4,
+          "final_value": 67100.0,
+          "total_return": 0.342,
+          "ann_vol": 0.14,
+          "sharpe": 0.55,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VOO_JEPI_50_50": {
+          "n_periods": 4,
+          "final_value": 69000.0,
+          "total_return": 0.38,
+          "ann_vol": 0.14,
+          "sharpe": 0.55,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VGT": {
+          "n_periods": 4,
+          "final_value": 72800.0,
+          "total_return": 0.45599999999999996,
+          "ann_vol": 0.14,
+          "sharpe": 0.65,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        }
+      }
+    },
+    {
+      "period_id": "COVID",
+      "label": "Crash + rebound",
+      "start": "2020-01-31",
+      "end": "2020-12-31",
+      "tune": true,
+      "coverage": 0.92,
+      "sample": true,
+      "etf": {
+        "n_periods": 4,
+        "final_value": 56600.00000000001,
+        "total_return": 0.132,
+        "ann_vol": 0.15,
+        "sharpe": 0.39999999999999997,
+        "max_drawdown": -0.22,
+        "hit_rate_vs_benchmark": 0.5,
+        "excess_total_vs_benchmark": 0.03,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "coverage": 0.92
+      },
+      "options": {
+        "status": "sample",
+        "n_trades": 12,
+        "total_return": 0.108,
+        "sharpe": 0.3,
+        "max_drawdown": -0.11,
+        "final_value": 55400.00000000001,
+        "ann_vol": 0.1,
+        "hit_rate_vs_benchmark": null,
+        "excess_total_vs_benchmark": null,
+        "note": "Placeholder \u2014 replace with period pack output"
+      },
+      "combined": {
+        "n_periods": 4,
+        "final_value": 112000.00000000001,
+        "total_return": 0.12,
+        "ann_vol": 0.15,
+        "sharpe": 0.35,
+        "max_drawdown": -0.22,
+        "hit_rate_vs_benchmark": 0.5,
+        "excess_total_vs_benchmark": 0.03,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "status": "sample",
+        "etf_weight": 0.5,
+        "options_weight": 0.5
+      },
+      "benchmarks": {
+        "VOO": {
+          "n_periods": 4,
+          "final_value": 53800.0,
+          "total_return": 0.076,
+          "ann_vol": 0.14,
+          "sharpe": 0.3,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "JEPI": {
+          "n_periods": 4,
+          "final_value": 53600.0,
+          "total_return": 0.07200000000000001,
+          "ann_vol": 0.14,
+          "sharpe": 0.35,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VOO_JEPI_50_50": {
+          "n_periods": 4,
+          "final_value": 54000.0,
+          "total_return": 0.08,
+          "ann_vol": 0.14,
+          "sharpe": 0.35,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VGT": {
+          "n_periods": 4,
+          "final_value": 54800.00000000001,
+          "total_return": 0.096,
+          "ann_vol": 0.14,
+          "sharpe": 0.44999999999999996,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        }
+      }
+    },
+    {
+      "period_id": "BEAR_22",
+      "label": "Inflation / rates bear",
+      "start": "2022-01-31",
+      "end": "2022-12-31",
+      "tune": true,
+      "coverage": 0.92,
+      "sample": true,
+      "etf": {
+        "n_periods": 4,
+        "final_value": 45600.0,
+        "total_return": -0.08800000000000001,
+        "ann_vol": 0.15,
+        "sharpe": 0.15000000000000002,
+        "max_drawdown": -0.2,
+        "hit_rate_vs_benchmark": 0.4,
+        "excess_total_vs_benchmark": 0.02,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "coverage": 0.92
+      },
+      "options": {
+        "status": "sample",
+        "n_trades": 12,
+        "total_return": -0.07200000000000001,
+        "sharpe": 0.05,
+        "max_drawdown": -0.1,
+        "final_value": 46400.0,
+        "ann_vol": 0.1,
+        "hit_rate_vs_benchmark": null,
+        "excess_total_vs_benchmark": null,
+        "note": "Placeholder \u2014 replace with period pack output"
+      },
+      "combined": {
+        "n_periods": 4,
+        "final_value": 92000.0,
+        "total_return": -0.08,
+        "ann_vol": 0.15,
+        "sharpe": 0.1,
+        "max_drawdown": -0.2,
+        "hit_rate_vs_benchmark": 0.4,
+        "excess_total_vs_benchmark": 0.02,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "status": "sample",
+        "etf_weight": 0.5,
+        "options_weight": 0.5
+      },
+      "benchmarks": {
+        "VOO": {
+          "n_periods": 4,
+          "final_value": 44300.0,
+          "total_return": -0.11399999999999999,
+          "ann_vol": 0.14,
+          "sharpe": 0.05,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "JEPI": {
+          "n_periods": 4,
+          "final_value": 44600.0,
+          "total_return": -0.108,
+          "ann_vol": 0.14,
+          "sharpe": 0.1,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VOO_JEPI_50_50": {
+          "n_periods": 4,
+          "final_value": 44000.0,
+          "total_return": -0.12,
+          "ann_vol": 0.14,
+          "sharpe": 0.1,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VGT": {
+          "n_periods": 4,
+          "final_value": 42800.0,
+          "total_return": -0.144,
+          "ann_vol": 0.14,
+          "sharpe": 0.2,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        }
+      }
+    },
+    {
+      "period_id": "BULL_23_24",
+      "label": "Narrow leadership / calmer vol regime",
+      "start": "2023-01-31",
+      "end": "2024-06-30",
+      "tune": true,
+      "coverage": 0.92,
+      "sample": true,
+      "etf": {
+        "n_periods": 4,
+        "final_value": 65400.0,
+        "total_return": 0.30800000000000005,
+        "ann_vol": 0.15,
+        "sharpe": 0.75,
+        "max_drawdown": -0.08,
+        "hit_rate_vs_benchmark": 0.6,
+        "excess_total_vs_benchmark": 0.04,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "coverage": 0.92
+      },
+      "options": {
+        "status": "sample",
+        "n_trades": 12,
+        "total_return": 0.25200000000000006,
+        "sharpe": 0.6499999999999999,
+        "max_drawdown": -0.04,
+        "final_value": 62600.0,
+        "ann_vol": 0.1,
+        "hit_rate_vs_benchmark": null,
+        "excess_total_vs_benchmark": null,
+        "note": "Placeholder \u2014 replace with period pack output"
+      },
+      "combined": {
+        "n_periods": 4,
+        "final_value": 128000.0,
+        "total_return": 0.28,
+        "ann_vol": 0.15,
+        "sharpe": 0.7,
+        "max_drawdown": -0.08,
+        "hit_rate_vs_benchmark": 0.6,
+        "excess_total_vs_benchmark": 0.04,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "status": "sample",
+        "etf_weight": 0.5,
+        "options_weight": 0.5
+      },
+      "benchmarks": {
+        "VOO": {
+          "n_periods": 4,
+          "final_value": 60450.00000000001,
+          "total_return": 0.209,
+          "ann_vol": 0.14,
+          "sharpe": 0.6499999999999999,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "JEPI": {
+          "n_periods": 4,
+          "final_value": 59900.0,
+          "total_return": 0.198,
+          "ann_vol": 0.14,
+          "sharpe": 0.7,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VOO_JEPI_50_50": {
+          "n_periods": 4,
+          "final_value": 61000.0,
+          "total_return": 0.22,
+          "ann_vol": 0.14,
+          "sharpe": 0.7,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VGT": {
+          "n_periods": 4,
+          "final_value": 63200.0,
+          "total_return": 0.264,
+          "ann_vol": 0.14,
+          "sharpe": 0.7999999999999999,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        }
+      }
+    },
+    {
+      "period_id": "HOLD_OUT",
+      "label": "Report card only \u2014 do not tune knobs after locking",
+      "start": "2024-07-31",
+      "end": null,
+      "tune": false,
+      "coverage": 0.92,
+      "sample": true,
+      "etf": {
+        "n_periods": 4,
+        "final_value": 54950.0,
+        "total_return": 0.099,
+        "ann_vol": 0.15,
+        "sharpe": 0.5,
+        "max_drawdown": -0.06,
+        "hit_rate_vs_benchmark": 0.5,
+        "excess_total_vs_benchmark": 0.01,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "coverage": 0.92
+      },
+      "options": {
+        "status": "sample",
+        "n_trades": 12,
+        "total_return": 0.081,
+        "sharpe": 0.4,
+        "max_drawdown": -0.03,
+        "final_value": 54050.0,
+        "ann_vol": 0.1,
+        "hit_rate_vs_benchmark": null,
+        "excess_total_vs_benchmark": null,
+        "note": "Placeholder \u2014 replace with period pack output"
+      },
+      "combined": {
+        "n_periods": 4,
+        "final_value": 109000.00000000001,
+        "total_return": 0.09,
+        "ann_vol": 0.15,
+        "sharpe": 0.45,
+        "max_drawdown": -0.06,
+        "hit_rate_vs_benchmark": 0.5,
+        "excess_total_vs_benchmark": 0.01,
+        "avg_turnover": 0.25,
+        "total_costs": 0.002,
+        "cost_bps_one_way": 5.0,
+        "status": "sample",
+        "etf_weight": 0.5,
+        "options_weight": 0.5
+      },
+      "benchmarks": {
+        "VOO": {
+          "n_periods": 4,
+          "final_value": 53325.0,
+          "total_return": 0.0665,
+          "ann_vol": 0.14,
+          "sharpe": 0.4,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "JEPI": {
+          "n_periods": 4,
+          "final_value": 53150.0,
+          "total_return": 0.06300000000000001,
+          "ann_vol": 0.14,
+          "sharpe": 0.45,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VOO_JEPI_50_50": {
+          "n_periods": 4,
+          "final_value": 53500.0,
+          "total_return": 0.07,
+          "ann_vol": 0.14,
+          "sharpe": 0.45,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        },
+        "VGT": {
+          "n_periods": 4,
+          "final_value": 54200.00000000001,
+          "total_return": 0.084,
+          "ann_vol": 0.14,
+          "sharpe": 0.55,
+          "max_drawdown": -0.12,
+          "hit_rate_vs_benchmark": null,
+          "excess_total_vs_benchmark": null
+        }
+      }
+    }
+  ]
+}

@@ -211,9 +211,51 @@ BACKTEST_PERIODS = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Research card / walk-forward pack ($100k allocator view)
+# Live paper ops may still segregate options sleeve vs margin reserve; the
+# research card collapses reserve into the options book (collateral for bets).
+# Target end-state for the main strategy is also 50/50 ETF / options book.
+# ---------------------------------------------------------------------------
+RESEARCH_TOTAL_CAPITAL_USD = 100_000.0
+RESEARCH_ETF_WEIGHT = 0.5
+RESEARCH_OPTIONS_WEIGHT = 0.5
+RESEARCH_ETF_CAPITAL_USD = RESEARCH_TOTAL_CAPITAL_USD * RESEARCH_ETF_WEIGHT  # $50k
+RESEARCH_OPTIONS_BOOK_USD = RESEARCH_TOTAL_CAPITAL_USD * RESEARCH_OPTIONS_WEIGHT  # $50k
+# Canonical equity cost for the shared research card (also run 0/5/10 ladder).
+RESEARCH_EQUITY_COST_BPS_ONE_WAY = 5.0
+RESEARCH_RISK_FREE_RATE = 0.03
+RESEARCH_CARD_PERIODS = ("FULL", "COVID", "BEAR_22", "BULL_23_24", "HOLD_OUT")
+# Benchmarks compounded on the same rebalance clock as the ETF sleeve.
+# VOO_JEPI_50_50 is the headline peer for the combined 50/50 book.
+RESEARCH_BENCHMARKS = {
+    "VOO": {
+        "label": "Primary patient beta",
+        "weights": {"VOO": 1.0},
+        "role": "primary",
+    },
+    "JEPI": {
+        "label": "Peer proxy — equity + premium",
+        "weights": {"JEPI": 1.0},
+        "role": "peer_proxy",
+    },
+    "VOO_JEPI_50_50": {
+        "label": "Closest twin to 50/50 ETF + premium stack",
+        "weights": {"VOO": 0.5, "JEPI": 0.5},
+        "role": "headline_peer",
+    },
+    "VGT": {
+        "label": "Style stress (tech concentration)",
+        "weights": {"VGT": 1.0},
+        "role": "style_stress",
+    },
+}
+RESEARCH_HEADLINE_PEER = "VOO_JEPI_50_50"
+
 # Paper DCA + tax-aware ledger
 # Ladder $50k over the ~3-month (13-week) min-hold so one vintage matures each week.
-ETF_TARGET_CAPITAL_USD = 50_000.0
+# (Paper capital still matches research ETF leg; options ops split is below.)
+ETF_TARGET_CAPITAL_USD = RESEARCH_ETF_CAPITAL_USD
 DCA_WEEKS = 13
 WEEKLY_CONTRIBUTION_USD = ETF_TARGET_CAPITAL_USD / DCA_WEEKS  # ≈ $3,846.15
 MIN_HOLD_DAYS = 91
@@ -226,9 +268,14 @@ PAPER_AUTO_PLACE_SELLS = False
 RECONCILE_WEIGHT_DRIFT_ABS = 0.02  # 2pp vs model target weight
 RECONCILE_SHARE_DRIFT_PCT = 0.05  # 5% vs paper-lot shares
 
-# Paper options / vol sleeve (separate from the long-only ETF book)
+# Paper options / vol sleeve (ops view: sleeve + pledged reserve).
+# Research / allocator view uses RESEARCH_OPTIONS_BOOK_USD (= both).
 OPTIONS_PAPER_CAPITAL_USD = 25_000.0
 CASH_MARGIN_RESERVE_USD = 25_000.0
+# Sanity: ops split should sum to the research options book.
+assert abs(
+    (OPTIONS_PAPER_CAPITAL_USD + CASH_MARGIN_RESERVE_USD) - RESEARCH_OPTIONS_BOOK_USD
+) < 1e-6
 OPTIONS_IVR_MIN = 30.0
 OPTIONS_IVR_PREFERRED = 50.0
 OPTIONS_DTE_MIN = 30

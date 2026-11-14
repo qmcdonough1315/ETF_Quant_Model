@@ -4,16 +4,18 @@ Walk-forward ETF selector backtest.
 
 Default: compound each holding window with production Target_Weight (Σ w_i r_i).
 Ablation: --equal-weight uses the mean of ticker compounded returns.
-Costs: --cost-bps one-way equity bps on dollars traded at rebalance (see modules/backtest_returns.py).
+Costs: --cost-bps one-way equity bps on dollars traded at rebalance.
 Periods: --period FULL|COVID|... from config.BACKTEST_PERIODS / BACKTEST_PERIODS.md.
+
+Research-card benchmarks: VOO, JEPI, VOO_JEPI_50_50, VGT (see config.RESEARCH_BENCHMARKS).
 """
 
 from __future__ import annotations
 
 import argparse
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
-import numpy as np
 import pandas as pd
 
 import config
@@ -27,23 +29,13 @@ from modules.data_ingestion import fetch_all_data
 from modules.dynamic_beta_estimator import run_kalman_filter_regressions
 from modules.factor_forecaster import generate_factor_forecasts
 from modules.fund_scorer import score_and_rank_funds
-
-
-def calculate_sharpe_ratio(
-    returns_series: pd.Series,
-    risk_free_rate: float = 0.03,
-    periods_per_year: float = 4.0,
-) -> float:
-    """Annualized Sharpe for fixed-horizon period returns."""
-    if returns_series is None or len(returns_series) == 0 or returns_series.std() == 0:
-        return 0.0
-
-    mean_period_ret = float(returns_series.mean())
-    std_period_ret = float(returns_series.std())
-    rf_period = (1 + risk_free_rate) ** (1 / periods_per_year) - 1
-    return ((mean_period_ret - rf_period) * periods_per_year) / (
-        std_period_ret * np.sqrt(periods_per_year)
-    )
+from modules.research_card import (
+    holding_window_return,
+    metrics_payload,
+    required_benchmark_tickers,
+    write_json,
+)
+from modules.walkforward_metrics import periods_per_year_from_step
 
 
 def resolve_period(
@@ -78,23 +70,30 @@ def resolve_period(
 def run_walkforward_backtest(
     start_date: str = "2019-01-31",
     end_date: Optional[str] = "2025-12-31",
-    initial_capital: float = 10000.0,
+    initial_capital: float = None,
     max_holdings: int = None,
     rebalance_step_months: int = 3,
-    risk_free_rate: float = 0.03,
+    risk_free_rate: float = None,
     *,
     equal_weight: bool = False,
     cost_bps_one_way: float = None,
     period_id: str = "CUSTOM",
     universe: Optional[list[str]] = None,
     cost_sensitivity: bool = False,
-):
+    artifact_dir: Optional[str | Path] = None,
+) -> pd.DataFrame:
+    if initial_capital is None:
+        initial_capital = float(config.RESEARCH_ETF_CAPITAL_USD)
     if max_holdings is None:
         max_holdings = config.MAX_HOLDINGS
     if cost_bps_one_way is None:
-        cost_bps_one_way = float(getattr(config, "BACKTEST_EQUITY_COST_BPS_ONE_WAY", 0.0))
+        cost_bps_one_way = float(
+            getattr(config, "RESEARCH_EQUITY_COST_BPS_ONE_WAY", config.BACKTEST_EQUITY_COST_BPS_ONE_WAY)
+        )
+    if risk_free_rate is None:
+        risk_free_rate = float(getattr(config, "RESEARCH_RISK_FREE_RATE", 0.03))
 
-    periods_per_year = 12.0 / float(rebalance_step_months)
+    periods_per_year = periods_per_year_from_step(rebalance_step_months)
     horizon_label = f"{rebalance_step_months}M"
     mode = "equal-weight ablation" if equal_weight else "production Target_Weight"
     traded_universe = [t.upper() for t in (universe or list(config.ETF_POPULATION))]
@@ -104,24 +103,28 @@ def run_walkforward_backtest(
             config, "BACKTEST_EQUITY_COST_SENSITIVITY_BPS", (0.0, 5.0, 10.0)
         )
     )
+    bench_tickers = required_benchmark_tickers()
+    bench_specs = config.RESEARCH_BENCHMARKS
 
     print("=" * 70)
     print(f"WALK-FORWARD BACKTEST [{period_id}] ({start_date} → {end_date or 'latest'})")
     print(f"Holding / rebalance step: {rebalance_step_months} months | mode: {mode}")
     print(f"Equity cost: {cost_bps_one_way:.1f} bps one-way on traded notional")
+    print(f"ETF sleeve capital: ${initial_capital:,.2f}")
     if abs(float(cost_bps_one_way)) < 1e-12:
         print(
             "NOTE: 0 bps is the research-optimistic baseline — not a silent free-fill claim. "
             f"Run --cost-sensitivity for {sens_bps} bps ladder."
         )
-    print(f"Universe size: {len(traded_universe)} | Starting capital: ${initial_capital:,.2f}")
+    print(f"Universe size: {len(traded_universe)}")
+    print(f"Benchmarks: {', '.join(bench_specs)}")
     print("=" * 70)
 
-    all_etfs = list(set(traded_universe + ["VTI", "SPY", "VGT", "VOO"]))
+    all_etfs = list(set(traded_universe + bench_tickers + ["VTI", "SPY", "VOO"]))
     prices, factors, macro = fetch_all_data(all_etfs)
 
     print("Benchmark coverage:")
-    for ticker in ["VTI", "SPY", "VGT", "VOO"]:
+    for ticker in bench_tickers:
         if ticker in prices.columns:
             print(f"  • {ticker}: missing={int(prices[ticker].isna().sum())}")
         else:
@@ -139,7 +142,6 @@ def run_walkforward_backtest(
     factors = _to_timestamp_index(factors)
     macro = _to_timestamp_index(macro)
 
-    # data_ingestion already returns monthly returns for ETFs; don't pct_change twice.
     looks_like_prices = bool((prices.iloc[0].abs() > 1.0).any())
     returns_df = prices.pct_change().dropna(how="all") if looks_like_prices else prices.copy()
 
@@ -151,18 +153,14 @@ def run_walkforward_backtest(
         print("Not enough date points to execute walk-forward steps.")
         return pd.DataFrame()
 
-    # Coverage diagnostic at first rebalance (universe readiness).
     first = rebalance_dates[0]
     cover = float(returns_df.loc[:first].notna().iloc[-1].mean()) if len(returns_df) else 0.0
     print(f"Universe column coverage at {first.strftime('%Y-%m')}: {cover:.1%}")
 
-    strategy_value = initial_capital
-    vti_value = initial_capital
-    spy_value = initial_capital
-    vgt_value = initial_capital
-
+    strategy_value = float(initial_capital)
+    bench_values = {bid: float(initial_capital) for bid in bench_specs}
     prev_weights: Optional[pd.Series] = None
-    history = []
+    history: list[dict[str, Any]] = []
 
     for i in range(0, len(rebalance_dates) - rebalance_step_months, rebalance_step_months):
         current_date = rebalance_dates[i]
@@ -207,117 +205,120 @@ def run_walkforward_backtest(
             prev_weights = w_new
         else:
             strat_ret = 0.0
-            # Staying in cash: no weight update.
 
-        vti_ret = (
-            ((1 + returns_df.loc[holding_dates, "VTI"]).prod() - 1)
-            if "VTI" in returns_df.columns
-            else 0.0
-        )
-        spy_ret = (
-            ((1 + returns_df.loc[holding_dates, "SPY"]).prod() - 1)
-            if "SPY" in returns_df.columns
-            else 0.0
-        )
-        vgt_ret = (
-            ((1 + returns_df.loc[holding_dates, "VGT"]).prod() - 1)
-            if "VGT" in returns_df.columns
-            else 0.0
-        )
+        row: dict[str, Any] = {
+            "Rebalance_Date": current_date.strftime("%Y-%m"),
+            "Holding_Window": (
+                f"{holding_dates[0].strftime('%Y-%m')} to {holding_dates[-1].strftime('%Y-%m')}"
+            ),
+            "Holding_Start": holding_dates[0].strftime("%Y-%m"),
+            "Holding_End": holding_dates[-1].strftime("%Y-%m"),
+            "Top_Picks": ", ".join(selected_tickers),
+            f"Strategy_Return_{horizon_label}": strat_ret,
+            "Gross_Return": gross,
+            "Turnover": turnover,
+            "Cost": cost,
+        }
 
         strategy_value *= 1 + strat_ret
-        vti_value *= 1 + vti_ret
-        spy_value *= 1 + spy_ret
-        vgt_value *= 1 + vgt_ret
+        row["Strategy_Value"] = strategy_value
 
-        history.append(
-            {
-                "Rebalance_Date": current_date.strftime("%Y-%m"),
-                "Holding_Window": (
-                    f"{holding_dates[0].strftime('%Y-%m')} to {holding_dates[-1].strftime('%Y-%m')}"
-                ),
-                "Top_Picks": ", ".join(selected_tickers),
-                f"Strategy_Return_{horizon_label}": strat_ret,
-                "Gross_Return": gross,
-                f"VTI_Return_{horizon_label}": float(vti_ret),
-                f"SPY_Return_{horizon_label}": float(spy_ret),
-                f"VGT_Return_{horizon_label}": float(vgt_ret),
-                "Turnover": turnover,
-                "Cost": cost,
-                "Strategy_Value": strategy_value,
-                "VTI_Value": vti_value,
-                "SPY_Value": spy_value,
-                "VGT_Value": vgt_value,
-            }
-        )
+        for bid, spec in bench_specs.items():
+            br = holding_window_return(returns_df, holding_dates, spec["weights"])
+            bench_values[bid] *= 1 + br
+            row[f"{bid}_Return_{horizon_label}"] = float(br)
+            row[f"{bid}_Value"] = bench_values[bid]
+
+        history.append(row)
 
     results_df = pd.DataFrame(history)
     if results_df.empty:
         return results_df
 
     ret_col = f"Strategy_Return_{horizon_label}"
-    vti_col = f"VTI_Return_{horizon_label}"
-    spy_col = f"SPY_Return_{horizon_label}"
-    vgt_col = f"VGT_Return_{horizon_label}"
+    peer = config.RESEARCH_HEADLINE_PEER
+    peer_col = f"{peer}_Return_{horizon_label}"
 
-    strat_sharpe = calculate_sharpe_ratio(results_df[ret_col], risk_free_rate, periods_per_year)
-    vti_sharpe = calculate_sharpe_ratio(results_df[vti_col], risk_free_rate, periods_per_year)
-    spy_sharpe = calculate_sharpe_ratio(results_df[spy_col], risk_free_rate, periods_per_year)
-    vgt_sharpe = calculate_sharpe_ratio(results_df[vgt_col], risk_free_rate, periods_per_year)
-
-    ann_vol = lambda s: float(s.std() * np.sqrt(periods_per_year) * 100)
-
-    strat_tot_ret = ((strategy_value / initial_capital) - 1) * 100
-    vti_tot_ret = ((vti_value / initial_capital) - 1) * 100
-    spy_tot_ret = ((spy_value / initial_capital) - 1) * 100
-    vgt_tot_ret = ((vgt_value / initial_capital) - 1) * 100
-
-    print("\n" + "=" * 80)
-    print("RISK-ADJUSTED PERFORMANCE COMPARISON")
-    print("=" * 80)
-
-    metrics_summary = pd.DataFrame(
-        {
-            "Asset / Strategy": [
-                "Model Strategy",
-                "VTI (Total Market)",
-                "SPY (S&P 500)",
-                "VGT (Tech Focus)",
-            ],
-            "Final Value ($)": [
-                f"${strategy_value:,.2f}",
-                f"${vti_value:,.2f}",
-                f"${spy_value:,.2f}",
-                f"${vgt_value:,.2f}",
-            ],
-            "Total Return (%)": [
-                f"{strat_tot_ret:+.2f}%",
-                f"{vti_tot_ret:+.2f}%",
-                f"{spy_tot_ret:+.2f}%",
-                f"{vgt_tot_ret:+.2f}%",
-            ],
-            "Ann. Volatility (%)": [
-                f"{ann_vol(results_df[ret_col]):.2f}%",
-                f"{ann_vol(results_df[vti_col]):.2f}%",
-                f"{ann_vol(results_df[spy_col]):.2f}%",
-                f"{ann_vol(results_df[vgt_col]):.2f}%",
-            ],
-            "Sharpe Ratio": [
-                f"{strat_sharpe:.2f}",
-                f"{vti_sharpe:.2f}",
-                f"{spy_sharpe:.2f}",
-                f"{vgt_sharpe:.2f}",
-            ],
-        }
+    strat_summary = metrics_payload(
+        results_df[ret_col],
+        initial_capital=initial_capital,
+        risk_free_rate=risk_free_rate,
+        periods_per_year=periods_per_year,
+        benchmark_returns=results_df[peer_col] if peer_col in results_df.columns else None,
+        extra={
+            "avg_turnover": float(results_df["Turnover"].mean()) if "Turnover" in results_df else 0.0,
+            "total_costs": float(results_df["Cost"].sum()) if "Cost" in results_df else 0.0,
+            "cost_bps_one_way": float(cost_bps_one_way),
+            "coverage": cover,
+            "equal_weight": bool(equal_weight),
+        },
     )
 
-    print(metrics_summary.to_string(index=False))
-    if "Cost" in results_df.columns:
-        print(
-            f"\nAvg turnover={results_df['Turnover'].mean():.3f} | "
-            f"total costs deducted={results_df['Cost'].sum():.4%} "
-            f"@ {cost_bps_one_way:.1f} bps one-way"
+    bench_summaries: dict[str, dict[str, Any]] = {}
+    for bid in bench_specs:
+        col = f"{bid}_Return_{horizon_label}"
+        bench_summaries[bid] = metrics_payload(
+            results_df[col],
+            initial_capital=initial_capital,
+            risk_free_rate=risk_free_rate,
+            periods_per_year=periods_per_year,
         )
+
+    print("\n" + "=" * 80)
+    print("RISK-ADJUSTED PERFORMANCE COMPARISON (ETF sleeve)")
+    print("=" * 80)
+
+    rows_print = [
+        (
+            "Model Strategy (ETF)",
+            strat_summary["final_value"],
+            strat_summary["total_return"],
+            strat_summary["ann_vol"],
+            strat_summary["sharpe"],
+            strat_summary["max_drawdown"],
+        )
+    ]
+    for bid, spec in bench_specs.items():
+        s = bench_summaries[bid]
+        rows_print.append(
+            (
+                f"{bid} — {spec['label']}",
+                s["final_value"],
+                s["total_return"],
+                s["ann_vol"],
+                s["sharpe"],
+                s["max_drawdown"],
+            )
+        )
+
+    metrics_summary = pd.DataFrame(
+        rows_print,
+        columns=[
+            "Asset / Strategy",
+            "Final Value ($)",
+            "Total Return (%)",
+            "Ann. Volatility (%)",
+            "Sharpe Ratio",
+            "Max Drawdown (%)",
+        ],
+    )
+    show = metrics_summary.copy()
+    show["Final Value ($)"] = show["Final Value ($)"].map(lambda v: f"${v:,.2f}")
+    show["Total Return (%)"] = show["Total Return (%)"].map(lambda v: f"{100 * v:+.2f}%")
+    show["Ann. Volatility (%)"] = show["Ann. Volatility (%)"].map(lambda v: f"{100 * v:.2f}%")
+    show["Sharpe Ratio"] = show["Sharpe Ratio"].map(lambda v: f"{v:.2f}")
+    show["Max Drawdown (%)"] = show["Max Drawdown (%)"].map(lambda v: f"{100 * v:.2f}%")
+    print(show.to_string(index=False))
+
+    print(
+        f"\nHit rate vs {peer}: {_fmt_pct(strat_summary.get('hit_rate_vs_benchmark'))} | "
+        f"excess total vs {peer}: {_fmt_pct(strat_summary.get('excess_total_vs_benchmark'))}"
+    )
+    print(
+        f"Avg turnover={strat_summary['avg_turnover']:.3f} | "
+        f"total costs deducted={strat_summary['total_costs']:.4%} "
+        f"@ {cost_bps_one_way:.1f} bps one-way"
+    )
 
     if cost_sensitivity and "Gross_Return" in results_df.columns:
         ladder = apply_cost_ladder(
@@ -331,34 +332,62 @@ def run_walkforward_backtest(
         print("\n" + "=" * 80)
         print("EQUITY COST SENSITIVITY (same gross path / turnover; 0 / 5 / 10 bps)")
         print("=" * 80)
-        show = ladder.copy()
-        show["final_value"] = show["final_value"].map(lambda v: f"${v:,.2f}")
-        show["total_return"] = show["total_return"].map(lambda v: f"{v*100:+.2f}%")
-        show["total_costs"] = show["total_costs"].map(lambda v: f"{v:.4%}")
-        show["avg_turnover"] = show["avg_turnover"].map(lambda v: f"{v:.3f}")
-        show["sharpe"] = show["sharpe"].map(lambda v: f"{v:.2f}")
-        show = show.rename(
-            columns={
-                "cost_bps_one_way": "bps",
-                "final_value": "Final Value",
-                "total_return": "Total Return",
-                "total_costs": "Total Costs",
-                "avg_turnover": "Avg Turnover",
-                "sharpe": "Sharpe",
-            }
-        )
-        print(show.to_string(index=False))
-        print(
-            "\nHow costs affect headline Sharpe: higher one-way bps shrinks net period "
-            "returns one-for-one with turnover×bps; Sharpe usually falls unless turnover "
-            "is near zero. Prefer the 5–10 bps columns for implementation realism."
-        )
-        print("=" * 80 + "\n")
+        show_l = ladder.copy()
+        show_l["final_value"] = show_l["final_value"].map(lambda v: f"${v:,.2f}")
+        show_l["total_return"] = show_l["total_return"].map(lambda v: f"{v*100:+.2f}%")
+        show_l["total_costs"] = show_l["total_costs"].map(lambda v: f"{v:.4%}")
+        show_l["avg_turnover"] = show_l["avg_turnover"].map(lambda v: f"{v:.3f}")
+        show_l["sharpe"] = show_l["sharpe"].map(lambda v: f"{v:.2f}")
+        print(show_l.to_string(index=False))
         results_df.attrs["cost_sensitivity"] = ladder
 
     print("=" * 80 + "\n")
 
+    results_df.attrs["period_id"] = period_id
+    results_df.attrs["coverage"] = cover
+    results_df.attrs["strategy_summary"] = strat_summary
+    results_df.attrs["benchmark_summaries"] = bench_summaries
+    results_df.attrs["horizon_label"] = horizon_label
+    results_df.attrs["periods_per_year"] = periods_per_year
+    results_df.attrs["initial_capital"] = initial_capital
+    results_df.attrs["risk_free_rate"] = risk_free_rate
+    results_df.attrs["cost_bps_one_way"] = cost_bps_one_way
+    results_df.attrs["start_date"] = start_date
+    results_df.attrs["end_date"] = end_date
+
+    if artifact_dir:
+        _write_period_artifacts(Path(artifact_dir), period_id, results_df)
+
     return results_df
+
+
+def _write_period_artifacts(artifact_dir: Path, period_id: str, results_df: pd.DataFrame) -> None:
+    out = artifact_dir / period_id
+    out.mkdir(parents=True, exist_ok=True)
+    steps_path = out / "steps.csv"
+    results_df.to_csv(steps_path, index=False)
+    summary = {
+        "period_id": period_id,
+        "start": results_df.attrs.get("start_date"),
+        "end": results_df.attrs.get("end_date"),
+        "coverage": results_df.attrs.get("coverage"),
+        "etf": results_df.attrs.get("strategy_summary"),
+        "benchmarks": results_df.attrs.get("benchmark_summaries"),
+        "horizon_label": results_df.attrs.get("horizon_label"),
+        "cost_bps_one_way": results_df.attrs.get("cost_bps_one_way"),
+    }
+    write_json(out / "summary.json", summary)
+    print(f"Wrote ETF artifacts under {out}")
+
+
+def _fmt_pct(x: Any) -> str:
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return "n/a"
+    if v != v:
+        return "n/a"
+    return f"{100 * v:+.2f}%"
 
 
 def main() -> None:
@@ -370,7 +399,12 @@ def main() -> None:
     )
     parser.add_argument("--start", default=None, help="Override period start YYYY-MM-DD")
     parser.add_argument("--end", default=None, help="Override period end YYYY-MM-DD")
-    parser.add_argument("--capital", type=float, default=10000.0)
+    parser.add_argument(
+        "--capital",
+        type=float,
+        default=None,
+        help=f"ETF sleeve capital (default research {config.RESEARCH_ETF_CAPITAL_USD})",
+    )
     parser.add_argument("--max-holdings", type=int, default=None)
     parser.add_argument("--step-months", type=int, default=None, help="Override rebalance step")
     parser.add_argument(
@@ -382,7 +416,7 @@ def main() -> None:
         "--cost-bps",
         type=float,
         default=None,
-        help="One-way equity cost bps (default config.BACKTEST_EQUITY_COST_BPS_ONE_WAY)",
+        help="One-way equity cost bps (default RESEARCH_EQUITY_COST_BPS_ONE_WAY)",
     )
     parser.add_argument(
         "--cost-sensitivity",
@@ -394,6 +428,11 @@ def main() -> None:
         action="store_true",
         help="Fast end-to-end check on a tiny liquid universe (still real data; not demo)",
     )
+    parser.add_argument(
+        "--artifact-dir",
+        default=None,
+        help="If set, write steps.csv + summary.json under <dir>/<PERIOD>/",
+    )
     args = parser.parse_args()
 
     period_id, start, end, step, tune = resolve_period(
@@ -401,8 +440,7 @@ def main() -> None:
     )
     universe = None
     if args.smoke:
-        # Real prices only — small sleeve so CI/agents can finish quickly.
-        universe = ["SPY", "QQQ", "IWM", "XLK", "XLF", "XLE", "XLV", "VTI", "VGT", "VOO"]
+        universe = ["SPY", "QQQ", "IWM", "XLK", "XLF", "XLE", "XLV", "VTI", "VGT", "VOO", "JEPI"]
         if args.period == config.BACKTEST_DEFAULT_PERIOD and args.start is None:
             period_id, start, end, step, tune = resolve_period(
                 "COVID", args.start, args.end, args.step_months
@@ -426,6 +464,7 @@ def main() -> None:
         period_id=period_id,
         universe=universe,
         cost_sensitivity=bool(args.cost_sensitivity),
+        artifact_dir=args.artifact_dir,
     )
 
 

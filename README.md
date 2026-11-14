@@ -198,29 +198,33 @@ We do **not** judge the model by a single in-sample fit. Two related engines exi
 
 Script: `run_walkforward_backtest.py` (shared helpers in `modules/backtest_returns.py`; also `backtest_engine.py`).
 
-**Idea:** At rebalance date \(t\), use **only** data ≤ \(t\) to estimate betas, forecast factors, and build weights. Then hold that portfolio for the next **3 months**, record the realized return as **Σ wᵢ rᵢ** using production `Target_Weight`, advance \(t\) by 3 months, and repeat. That is the standard defense against look-ahead bias / data snooping. Use `--equal-weight` only as an ablation; `--cost-bps` applies one-way equity costs on traded notional (default **0 bps is printed explicitly** as research-optimistic — use `--cost-sensitivity` for the **0 / 5 / 10 bps** ladder on the same gross/turnover path).
+**Idea:** At rebalance date \(t\), use **only** data ≤ \(t\) to estimate betas, forecast factors, and build weights. Then hold that portfolio for the next **3 months**, record the realized return as **Σ wᵢ rᵢ** using production `Target_Weight`, advance \(t\) by 3 months, and repeat. That is the standard defense against look-ahead bias / data snooping. Use `--equal-weight` only as an ablation; `--cost-bps` applies one-way equity costs on traded notional. Research-card default is **5 bps**; use `--cost-sensitivity` for the **0 / 5 / 10 bps** ladder on the same gross/turnover path.
 
 **Frozen windows:** [`BACKTEST_PERIODS.md`](BACKTEST_PERIODS.md) / `config.BACKTEST_PERIODS` (`FULL`, `HOLD_OUT`, `COVID`, `BEAR_22`, …).
+
+**Research card ($100k allocator view):** 50/50 ETF model / options book (ops reserve included in the options book). Period pack writes `period_matrix.json` for the quirkmacro.com **Research** tab.
 
 **Benchmarks compound in parallel on the same holding windows:**
 
 | Benchmark | Role |
 |---|---|
-| **VTI** | Broad US total market |
-| **SPY** | Large-cap S&P 500 |
-| **VGT** | Tech-heavy growth sleeve (style stress test) |
+| **VOO** | Primary patient beta (aligned with paper DCA) |
+| **JEPI** | Peer proxy — equity + premium |
+| **VOO_JEPI_50_50** | Headline peer for the 50/50 stack (same 3M rebalance) |
+| **VGT** | Tech-heavy style stress |
 
 **Reported metrics**
 
-- Ending wealth vs start capital
-- Total return over the test span
-- Annualized volatility of the 3-month period returns
-- Annualized Sharpe of those period returns (rf assumed ~3% unless overridden)
+- Ending wealth vs start capital / total return
+- Annualized volatility & Sharpe of period returns (rf ~3%)
+- Max drawdown, hit rate vs headline peer
+- Combined 50/50 book when the period pack is run
 
 Run locally:
 
 ```bash
-PYTHONPATH=. python3 run_walkforward_backtest.py
+PYTHONPATH=. python3 run_walkforward_backtest.py --period COVID --cost-bps 5
+PYTHONPATH=. python3 scripts/run_walkforward_period_pack.py --cost-bps 5
 ```
 
 ### 8.2 Live / paper benchmarks
@@ -268,6 +272,8 @@ PYTHONPATH=. python3 run_walkforward_backtest.py --period FULL
 PYTHONPATH=. python3 run_walkforward_backtest.py --period COVID --cost-bps 5
 PYTHONPATH=. python3 run_walkforward_backtest.py --period COVID --cost-sensitivity
 PYTHONPATH=. python3 run_walkforward_backtest.py --smoke   # fast end-to-end on a small liquid universe
+PYTHONPATH=. python3 scripts/run_walkforward_period_pack.py --smoke --skip-options --periods COVID
+# Copy period_matrix.json → quirk_macro_web_dev/src/data/walkforward-period-matrix.json
 
 # Options sleeve research backtest (real IV history only)
 PYTHONPATH=. python3 run_options_sleeve_backtest.py --from-supabase

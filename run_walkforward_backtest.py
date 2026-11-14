@@ -362,10 +362,8 @@ def run_walkforward_backtest(
 
 
 def _write_period_artifacts(artifact_dir: Path, period_id: str, results_df: pd.DataFrame) -> None:
-    out = artifact_dir / period_id
+    out = Path(artifact_dir) / period_id
     out.mkdir(parents=True, exist_ok=True)
-    steps_path = out / "steps.csv"
-    results_df.to_csv(steps_path, index=False)
     summary = {
         "period_id": period_id,
         "start": results_df.attrs.get("start_date"),
@@ -376,7 +374,16 @@ def _write_period_artifacts(artifact_dir: Path, period_id: str, results_df: pd.D
         "horizon_label": results_df.attrs.get("horizon_label"),
         "cost_bps_one_way": results_df.attrs.get("cost_bps_one_way"),
     }
+    # JSON first (smaller / less brittle on some artifact mounts); CSV best-effort.
     write_json(out / "summary.json", summary)
+    try:
+        results_df.to_csv(out / "steps.csv", index=False)
+    except OSError as e:  # noqa: BLE001 — keep run alive if artifact FS flakes
+        fallback = Path("artifacts") / "walkforward" / period_id
+        fallback.mkdir(parents=True, exist_ok=True)
+        results_df.to_csv(fallback / "steps.csv", index=False)
+        write_json(fallback / "summary.json", summary)
+        print(f"WARNING: steps.csv write failed ({e}); wrote fallback under {fallback}")
     print(f"Wrote ETF artifacts under {out}")
 
 

@@ -50,10 +50,11 @@ def _try_options_trades(
     try:
         from modules.options_sleeve import PHASE1_OPTIONABLE_ETFS
         from modules.options_sleeve_backtest import (
-            fetch_daily_prices,
             load_iv_history,
             run_options_sleeve_backtest,
         )
+        # Shared daily price helper lives on the options CLI module.
+        from run_options_sleeve_backtest import fetch_daily_prices
     except Exception as e:  # noqa: BLE001
         return "error", None, {"error": str(e)}
 
@@ -137,6 +138,8 @@ def _period_row_from_etf(
             windows,
             options_book_usd=opt_cap,
         )
+        # Align to ETF positional index so 50/50 blend does not mis-join on labels.
+        opt_rets = pd.Series(opt_rets.to_numpy(), index=etf_rets.index, dtype=float)
         opt_extra = {
             "status": "ok",
             "n_trades": int(len(options_trades)),
@@ -172,7 +175,11 @@ def _period_row_from_etf(
         etf_rets, opt_rets, left_weight=etf_w, right_weight=opt_w
     )
     peer_col = f"{peer}_Return_{horizon}"
-    peer_rets = results_df[peer_col] if peer_col in results_df.columns else None
+    peer_rets = (
+        pd.Series(results_df[peer_col].to_numpy(), index=etf_rets.index, dtype=float)
+        if peer_col in results_df.columns
+        else None
+    )
     combined_summary = metrics_payload(
         combined_rets,
         initial_capital=float(assumptions["total_capital_usd"]),

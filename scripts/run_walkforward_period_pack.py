@@ -131,7 +131,17 @@ def _period_row_from_etf(
     reb = results_df["Rebalance_Date"].tolist()
     windows = list(zip(results_df["Holding_Start"], results_df["Holding_End"]))
 
-    if options_status == "ok" and options_trades is not None:
+    n_trades = int(len(options_trades)) if options_trades is not None else 0
+    # Usable options path: real IV overlap that produced a simulated sleeve
+    # (or full-window coverage with zero trades because rules skipped). A
+    # clamped window with zero trades is treated as no usable IV overlap.
+    has_usable_options = (
+        options_status == "ok"
+        and options_trades is not None
+        and (n_trades > 0 or not bool(options_meta.get("clamped", False)))
+    )
+
+    if has_usable_options:
         opt_rets = options_pnl_to_period_returns(
             options_trades,
             reb,
@@ -142,7 +152,7 @@ def _period_row_from_etf(
         opt_rets = pd.Series(opt_rets.to_numpy(), index=etf_rets.index, dtype=float)
         opt_extra = {
             "status": "ok",
-            "n_trades": int(len(options_trades)),
+            "n_trades": n_trades,
             **{k: v for k, v in options_meta.items() if k != "n_trades"},
         }
         opt_summary = metrics_payload(
@@ -152,27 +162,38 @@ def _period_row_from_etf(
             periods_per_year=ppy,
             extra=opt_extra,
         )
+        comb_etf_w, comb_opt_w = etf_w, opt_w
+        comb_status = "ok"
+        comb_capital = float(assumptions["total_capital_usd"])
     else:
-        # Cash drag inside the options book when IV uncovered / failed.
+        # No usable IV overlap: report options as uncovered and put 100% of the
+        # combined book in the ETF sleeve (do not invent IV or force cash drag).
         opt_rets = pd.Series(0.0, index=etf_rets.index, dtype=float)
+        display_status = (
+            options_status
+            if options_status not in {"ok", "skipped"}
+            else "uncovered"
+        )
         opt_summary = metrics_payload(
             opt_rets,
             initial_capital=opt_cap,
             risk_free_rate=rf,
             periods_per_year=ppy,
             extra={
-                "status": options_status,
-                "n_trades": 0,
+                "status": display_status,
+                "n_trades": n_trades,
                 **options_meta,
                 "note": (
-                    "Options PnL not simulated for this window; "
-                    "combined assumes idle cash (0%)."
+                    "No usable IV overlap for this window — options PnL not simulated. "
+                    "Combined book assumes 100% ETF sleeve (no cash drag)."
                 ),
             },
         )
+        comb_etf_w, comb_opt_w = 1.0, 0.0
+        comb_status = "etf_only_no_iv"
 
     combined_rets = blend_period_returns(
-        etf_rets, opt_rets, left_weight=etf_w, right_weight=opt_w
+        etf_rets, opt_rets, left_weight=comb_etf_w, right_weight=comb_opt_w
     )
     peer_col = f"{peer}_Return_{horizon}"
     peer_rets = (
@@ -180,6 +201,7 @@ def _period_row_from_etf(
         if peer_col in results_df.columns
         else None
     )
+    # Always mark combined wealth on the full $100k book (100% ETF when no IV).
     combined_summary = metrics_payload(
         combined_rets,
         initial_capital=float(assumptions["total_capital_usd"]),
@@ -187,9 +209,14 @@ def _period_row_from_etf(
         periods_per_year=ppy,
         benchmark_returns=peer_rets,
         extra={
-            "status": "ok" if options_status == "ok" else "options_cash_drag",
-            "etf_weight": etf_w,
-            "options_weight": opt_w,
+            "status": comb_status,
+            "etf_weight": comb_etf_w,
+            "options_weight": comb_opt_w,
+            "note": (
+                None
+                if has_usable_options
+                else "100% ETF sleeve — options IV uncovered for this period."
+            ),
         },
     )
 

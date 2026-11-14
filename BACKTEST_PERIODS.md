@@ -33,7 +33,7 @@ PYTHONPATH=. python3 run_options_sleeve_backtest.py --period HOLD_OUT --from-sup
 - **`HOLD_OUT` is report-only** after lock — do not tune model knobs on it.
 - If universe coverage is thin before ~2019, skip or annotate `VOL_18`; prefer `FULL` start when ≥80% of traded names have returns.
 - Headline research-card equity cost: **5 bps** one-way (`RESEARCH_EQUITY_COST_BPS_ONE_WAY`). Sensitivity ladder remains **0 / 5 / 10** via `--cost-sensitivity`.
-- Options sleeve backtest clamps to **IV history overlap** and refuses to invent IVR when a stress window is uncovered; uncovered windows assume **idle cash (0%)** inside the options half of the combined book and are labeled as such.
+- Options sleeve backtest clamps to **IV history overlap** and refuses to invent IVR when a stress window is uncovered; uncovered windows keep the options column labeled as such and the **combined book falls back to 100% ETF** (no cash drag, no invented IV).
 
 | ID | Start | End | Step | Tune? | Role |
 |---|---|---|---|---|---|

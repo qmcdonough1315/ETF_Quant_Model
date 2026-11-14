@@ -54,6 +54,30 @@ def test_blend_50_50():
     assert abs(out.loc["b"] - 0.05) < 1e-12
 
 
+def test_uncovered_iv_uses_full_etf_blend():
+    """No usable IV → combined is 100% ETF returns (not cash-drag 50/50)."""
+    etf = pd.Series([0.10, 0.20])
+    idle = pd.Series([0.0, 0.0])
+    cash_drag = blend_period_returns(etf, idle, left_weight=0.5, right_weight=0.5)
+    full_etf = blend_period_returns(etf, idle, left_weight=1.0, right_weight=0.0)
+    assert abs(cash_drag.iloc[0] - 0.05) < 1e-12
+    assert abs(full_etf.iloc[0] - 0.10) < 1e-12
+    assert abs(full_etf.iloc[1] - 0.20) < 1e-12
+
+
+def test_write_json_rejects_bare_nan(tmp_path):
+    import json
+    from modules.research_card import write_json
+
+    path = tmp_path / "card.json"
+    write_json(path, {"hit_rate_vs_benchmark": float("nan"), "ok": 1.0})
+    raw = path.read_text()
+    assert "NaN" not in raw
+    loaded = json.loads(raw)
+    assert loaded["hit_rate_vs_benchmark"] is None
+    assert loaded["ok"] == 1.0
+
+
 def test_options_pnl_binning_by_exit():
     trades = pd.DataFrame(
         {

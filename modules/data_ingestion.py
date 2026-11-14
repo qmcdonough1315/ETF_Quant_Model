@@ -29,6 +29,7 @@ def fetch_ken_french_factors(start_date: str = "1996-01-01") -> pd.DataFrame:
     factors.index = factors.index.to_timestamp().to_period('M')
     return factors
 
+
 def fetch_macro_indicators(start_date: str = "1996-01-01") -> pd.DataFrame:
     print("📥 Fetching Macroeconomic Indicators from FRED...")
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")

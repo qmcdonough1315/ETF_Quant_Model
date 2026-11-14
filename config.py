@@ -124,6 +124,10 @@ MIN_FACTOR_THRESHOLD = 0.01
 ALPHA_SHRINKAGE_WEIGHT = 0.75  # 75% weight to fund's alpha, 25% to the group mean
 FORECAST_HORIZON_MONTHS = 3  # Holding / forecast horizon in months
 
+# Ken French monthly factor files for calendar month T are typically published
+# early in T+1. At a month-end T decision, only factors through T-1 are known.
+KEN_FRENCH_PUBLICATION_LAG_MONTHS = 1
+
 # Overweight high-return value/investment factors; keep a milder momentum tilt
 FACTOR_TILTS = {
     "Mkt_RF": 1.0,

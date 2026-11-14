@@ -5,6 +5,7 @@ from modules.backtest_returns import net_period_return, normalize_weights, portf
 from modules.fund_scorer import score_and_rank_funds
 from modules.dynamic_beta_estimator import run_kalman_filter_regressions
 from modules.factor_forecaster import generate_factor_forecasts
+from modules.point_in_time import ken_french_asof
 
 
 def _period_label(ts) -> str:
@@ -63,7 +64,7 @@ def run_historical_backtest(
         )
 
         hist_etfs = df_etfs.loc[:current_date]
-        hist_factors = df_factors.loc[:current_date]
+        hist_factors = ken_french_asof(df_factors, current_date)
         hist_macro = df_macro.loc[:current_date]
 
         beta_profiles = run_kalman_filter_regressions(hist_etfs, hist_factors)

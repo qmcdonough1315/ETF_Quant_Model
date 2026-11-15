@@ -36,7 +36,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          # thetadata>=1.0 requires Python >=3.12 (older releases are yanked).
+          python-version: '3.12'
 
       - name: Assert Supabase secrets present (values never printed)
         env:

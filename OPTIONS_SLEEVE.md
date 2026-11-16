@@ -33,6 +33,7 @@ Liquid ETF options: SPY, QQQ, IWM, and major sector ETFs (`PHASE1_OPTIONABLE_ETF
 ## IV Rank data (live, no demo)
 - **Definition (v1):** ~30 DTE ATM IV = average of call and put Black–Scholes IVs from mid prices.
 - **Bootstrap:** ThetaData free-tier EOD (`run_iv_bootstrap.py`) → `option_iv_history` (see `supabase_option_iv_history.sql`).
+- **Databento (OPRA EOD NBBO):** cost-gated `cbbo-1m` last 10m of RTH → ATM IV (`modules/databento_iv_bootstrap.py`). Estimate first: `scripts/databento_iv_cost_estimate.py`. Pull: `scripts/run_databento_iv_bootstrap.py` with `DATABENTO_API_KEY` (stays under ~$125 free credits via budget packs / day-by-day `get_cost`).
 - **Refresh:** `scripts/refresh_option_iv_history.py` — weekday open/noon IV-only Actions job (`.github/workflows/iv_refresh.yml`) plus Sunday weekly step when `THETADATA_API_KEY` is set. Settled EOD append only (no demo IV; not the factor/composite pipeline).
 - **Coverage / XLRE gaps:** `scripts/report_iv_coverage.py`
 - **Ongoing:** desk must never invent IVR; missing → skip.
@@ -48,5 +49,5 @@ PYTHONPATH=. python3 run_options_sleeve_backtest.py --from-supabase
 ```
 
 ## Code
-- Python: `modules/options_sleeve.py`, `modules/options_orders.py`, `modules/options_sleeve_backtest.py`, `modules/thetadata_iv_bootstrap.py`, `modules/options_composite.py`, constants in `config.py`
+- Python: `modules/options_sleeve.py`, `modules/options_orders.py`, `modules/options_sleeve_backtest.py`, `modules/thetadata_iv_bootstrap.py`, `modules/databento_iv_bootstrap.py`, `modules/options_composite.py`, constants in `config.py`
 - Dashboard: `OptionsSleevePanel` + `OptionsTradeDesk` + `options-sleeve-rules.ts` / `options-orders.ts`

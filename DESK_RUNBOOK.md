@@ -29,13 +29,14 @@ PYTHONPATH=. python3 scripts/propose_options_paper.py --tickers SPY,QQQ,XLK --ou
 ## Sunday checklist
 
 1. **Kill-switch** — Read [`RISK_POLICY.md`](RISK_POLICY.md). If yellow/red or `QUIRK_KILL_SWITCH=1`, **stop** (no new short premium).
-2. **IV freshness** — Confirm weekday IV-only job (`.github/workflows/iv_refresh.yml`, ~open + noon ET) and/or Sunday weekly step ran. Manual: `scripts/refresh_option_iv_history.py --days 5`. ThetaData free tier appends **settled EOD** (delayed), not live open prints. Missing IVR → **skip** that ticker (fail closed).
-3. **Composites** — Factor tab / Supabase `options_composite` for Phase 1 names.
-4. **Signal board** — Run `propose_options_paper.py` or open Options Sleeve panel. Q4 / missing IV / kill-switch = skip.
-5. **Ops filters** — Ex-div / pin rules ([`OPTIONS_RISK_OPS.md`](OPTIONS_RISK_OPS.md)); liquidity caps (sector vs SPY/QQQ/IWM).
-6. **Propose** — Options Trade Desk: build mleg, check credit limit haircut, size vs name/sector caps.
-7. **Confirm place** — Paper only, `confirm=true`. Do not place live.
-8. **Log** — Note skips (IVR, liquidity, ex-div, kill-switch) in the desk session notes.
+2. **Realism diagnostics** — After `main.py` (or `scripts/report_model_realism.py`), read `MODEL REALISM DIAGNOSTICS`. If severity is **FAIL**, treat headline 3M expected return / Sharpe as untrusted until you understand the flagged gates (factor-forecast tails, fade-tailwind β×f, tilt lift, vol compression). Sharpe printed in the portfolio summary is a **3M E[r]/σ** ratio, not annualized.
+3. **IV freshness** — Confirm weekday IV-only job (`.github/workflows/iv_refresh.yml`, ~open + noon ET) and/or Sunday weekly step ran. Manual: `scripts/refresh_option_iv_history.py --days 5`. ThetaData free tier appends **settled EOD** (delayed), not live open prints. Missing IVR → **skip** that ticker (fail closed).
+4. **Composites** — Factor tab / Supabase `options_composite` for Phase 1 names.
+5. **Signal board** — Run `propose_options_paper.py` or open Options Sleeve panel. Q4 / missing IV / kill-switch = skip.
+6. **Ops filters** — Ex-div / pin rules ([`OPTIONS_RISK_OPS.md`](OPTIONS_RISK_OPS.md)); liquidity caps (sector vs SPY/QQQ/IWM).
+7. **Propose** — Options Trade Desk: build mleg, check credit limit haircut, size vs name/sector caps.
+8. **Confirm place** — Paper only, `confirm=true`. Do not place live.
+9. **Log** — Note skips (IVR, liquidity, ex-div, kill-switch) and any realism FAIL/WARN codes in the desk session notes.
 
 ---
 

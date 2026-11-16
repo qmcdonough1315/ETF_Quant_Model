@@ -11,6 +11,7 @@ def export_to_supabase(
     portfolio_sharpe: float = None,
     top_betas: pd.DataFrame = None,
     options_composites: dict = None,
+    extra_records: list | None = None,
 ):
     """
     Exports Factor Returns, Portfolio Weights, Fund Returns, Summary Metrics,
@@ -100,6 +101,9 @@ def export_to_supabase(
             "ticker_or_factor": "expected_sharpe_ratio",
             "value": float(portfolio_sharpe)
         })
+
+    if extra_records:
+        records.extend(extra_records)
 
     # Push payload to Supabase
     try:

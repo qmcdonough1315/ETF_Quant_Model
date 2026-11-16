@@ -3,5 +3,8 @@ __pycache__/
 # IV bootstrap artifacts
 data/option_iv_history/
 
+# Live-run realism JSON dumps
+data/realism/
+
 # Local walk-forward research outputs
 artifacts/

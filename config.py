@@ -230,6 +230,27 @@ RESEARCH_OPTIONS_BOOK_USD = RESEARCH_TOTAL_CAPITAL_USD * RESEARCH_OPTIONS_WEIGHT
 RESEARCH_EQUITY_COST_BPS_ONE_WAY = 5.0
 RESEARCH_RISK_FREE_RATE = 0.03
 RESEARCH_CARD_PERIODS = ("FULL", "COVID", "BEAR_22", "BULL_23_24", "HOLD_OUT")
+
+# ---------------------------------------------------------------------------
+# Live-run realism gates (same horizon as FORECAST_HORIZON_MONTHS).
+# These do not change weights — they flag when assumptions look stretched so
+# the desk can distrust headline expected return / Sharpe.
+# ---------------------------------------------------------------------------
+REALISM_FACTOR_PCTILE_LO = 0.05
+REALISM_FACTOR_PCTILE_HI = 0.95
+REALISM_NAME_EXPECTED_ABS = 0.15
+REALISM_PORTFOLIO_EXPECTED_ABS = 0.10
+# Horizon Sharpe = E[r]/σ over FORECAST_HORIZON_MONTHS (not annualized).
+REALISM_HORIZON_SHARPE_MAX = 1.00
+# Annualized equivalent: Sharpe_h * sqrt(12/h).
+REALISM_ANN_SHARPE_MAX = 2.00
+REALISM_DIVERSIFICATION_RATIO_MAX = 2.00
+# Share of gross |β×f| book contribution from fade-tailwind channels
+# (negative factor forecast × negative beta that still adds to μ).
+REALISM_FADE_TAILWIND_SHARE_MAX = 0.45
+REALISM_TILT_LIFT_MAX = 0.025
+REALISM_VS_SPY_MULTIPLE_MAX = 2.50
+REALISM_RISK_FREE_RATE = RESEARCH_RISK_FREE_RATE
 # Benchmarks compounded on the same rebalance clock as the ETF sleeve.
 # VOO_JEPI_50_50 is the headline peer for the combined 50/50 book.
 RESEARCH_BENCHMARKS = {

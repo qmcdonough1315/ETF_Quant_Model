@@ -1,3 +1,7 @@
+import json
+from datetime import datetime
+from pathlib import Path
+
 import config
 from modules.data_ingestion import fetch_all_data
 from modules.dynamic_beta_estimator import run_kalman_filter_regressions
@@ -6,6 +10,11 @@ from modules.point_in_time import ken_french_asof
 from modules.fund_scorer import score_and_rank_funds
 from modules.portfolio_optimizer import portfolio_expected_metrics
 from modules.options_composite import composites_from_scores_df
+from modules.realism_diagnostics import (
+    format_realism_report,
+    realism_metric_records,
+    run_realism_diagnostics,
+)
 from modules.supabase_exporter import export_to_supabase
 
 try:
@@ -89,8 +98,33 @@ def main():
 
     print("\n--- PORTFOLIO SUMMARY METRICS ---")
     print(f"  • Total Expected Return (3M) : {port_exp_return:+.2%}")
-    print(f"  • Expected Volatility        : {port_vol:.2%}")
-    print(f"  • Expected Sharpe Ratio      : {port_sharpe:.2f}\n")
+    print(f"  • Expected Volatility (3M)   : {port_vol:.2%}")
+    print(
+        f"  • Expected Sharpe (3M E[r]/σ) : {port_sharpe:.2f} "
+        "(not annualized — see realism diagnostics)"
+    )
+
+    realism = run_realism_diagnostics(
+        predictions=forecast_report["predictions"],
+        factors=factors_pit,
+        holdings=top_picks,
+        scores_df=scores_df,
+        beta_profiles=beta_profiles,
+        prices=prices,
+        port_return=port_exp_return,
+        port_vol=port_vol,
+        port_sharpe=port_sharpe,
+    )
+    print()
+    print(format_realism_report(realism))
+    print()
+
+    artifact_dir = Path("data/realism")
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    artifact_path = artifact_dir / f"realism_{today}.json"
+    artifact_path.write_text(json.dumps(realism, indent=2, default=str))
+    print(f"  • Realism artifact → {artifact_path}")
 
     export_to_supabase(
         forecast_report=forecast_report,
@@ -99,6 +133,7 @@ def main():
         portfolio_vol=port_vol,
         portfolio_sharpe=port_sharpe,
         options_composites=options_composites,
+        extra_records=realism_metric_records(realism, today),
     )
     # Options composites are published for the desk. Propose/place stays HITL —
     # see DESK_RUNBOOK.md (no auto mleg from main.py).
